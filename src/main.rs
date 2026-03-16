@@ -1,8 +1,6 @@
 #![forbid(unsafe_code)]
 #![allow(unused_imports, dead_code)]
 
-use async_openai::types::ChatCompletionRequestMessage;
-use async_openai::types::Role::{self, *};
 use bytes::{BufMut, Bytes, BytesMut};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::Sample;
@@ -29,7 +27,6 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 use std::{env, string};
-use stream_cancel::{StreamExt as _, Trigger, Tripwire};
 use tokio::fs::File;
 use turbosql::{execute, now_ms, select, update, Blob, Turbosql};
 
@@ -38,7 +35,13 @@ mod self_update;
 mod session;
 
 // ─────────────────────────────────────────────
-// Word wrapper for live vs prerecorded
+// Claude model constants
+// ─────────────────────────────────────────────
+const CLAUDE_OPUS: &str = "claude-opus-4-6";
+const CLAUDE_HAIKU: &str = "claude-haiku-4-5-20251001";
+
+// ─────────────────────────────────────────────
+// Word wrapper
 // ─────────────────────────────────────────────
 enum Word {
 	Live(LiveWord),
@@ -48,14 +51,14 @@ enum Word {
 impl Word {
 	fn speaker(&self) -> u8 {
 		match self {
-			Word::Live(word) => word.speaker,
-			Word::Prerecorded(word) => word.speaker.unwrap() as u8,
+			Word::Live(w) => w.speaker,
+			Word::Prerecorded(w) => w.speaker.unwrap() as u8,
 		}
 	}
 	fn word(&self) -> &str {
 		match self {
-			Word::Live(word) => &word.word,
-			Word::Prerecorded(word) => &word.word,
+			Word::Live(w) => &w.word,
+			Word::Prerecorded(w) => &w.word,
 		}
 	}
 }
@@ -68,25 +71,58 @@ static TRANSCRIPT_FINAL: Lazy<Mutex<Vec<Option<Word>>>> = Lazy::new(Default::def
 static DURATION: Lazy<Mutex<f64>> = Lazy::new(Default::default);
 static COMPLETION: Lazy<Mutex<String>> = Lazy::new(Default::default);
 static COMPLETION_PROMPT: Lazy<Mutex<String>> = Lazy::new(|| {
-	Mutex::new(String::from(
-		"For the personal conversational transcript above, here is a coaching prompt:",
-	))
+	Mutex::new("Complete the next sentence naturally:".to_string())
 });
 
-/// Branching Universe content — one per column
+// Universe content
 static UNIVERSE_PRESENCE: Lazy<Mutex<String>> = Lazy::new(Default::default);
 static UNIVERSE_POWER: Lazy<Mutex<String>> = Lazy::new(Default::default);
 static UNIVERSE_POSSIBILITY: Lazy<Mutex<String>> = Lazy::new(Default::default);
-
-/// How many words (final) have been processed into universes already
 static UNIVERSE_WORD_COUNT: Lazy<Mutex<usize>> = Lazy::new(Default::default);
-
-/// Whether universe generation is currently running
 static UNIVERSE_GENERATING: Lazy<Mutex<bool>> = Lazy::new(Default::default);
 
+// Relationship context (editable + auto-filled)
+static CTX_INTENTION: Lazy<Mutex<String>> =
+	Lazy::new(|| Mutex::new(String::new()));
+static CTX_OUTCOME: Lazy<Mutex<String>> =
+	Lazy::new(|| Mutex::new(String::new()));
+static CTX_THEIR_ROLE: Lazy<Mutex<String>> =
+	Lazy::new(|| Mutex::new(String::new()));
+static CTX_MY_ROLE: Lazy<Mutex<String>> =
+	Lazy::new(|| Mutex::new(String::new()));
+static CTX_AUTOFILL_DONE: Lazy<Mutex<bool>> = Lazy::new(Default::default);
+
 // ─────────────────────────────────────────────
-// Chat / wheel window types
+// Chat / wheel window types (kept for power users)
 // ─────────────────────────────────────────────
+#[derive(Clone, Debug)]
+enum Role {
+	System,
+	User,
+	Assistant,
+}
+
+impl std::fmt::Display for Role {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Role::System => write!(f, "system"),
+			Role::User => write!(f, "user"),
+			Role::Assistant => write!(f, "assistant"),
+		}
+	}
+}
+
+impl PartialEq for Role {
+	fn eq(&self, other: &Self) -> bool {
+		matches!(
+			(self, other),
+			(Role::System, Role::System)
+				| (Role::User, Role::User)
+				| (Role::Assistant, Role::Assistant)
+		)
+	}
+}
+
 #[derive(Clone)]
 struct ChatMessage {
 	role: Role,
@@ -97,7 +133,7 @@ struct WheelWindow(Vec<ChatMessage>);
 
 impl Default for WheelWindow {
 	fn default() -> Self {
-		Self(vec![ChatMessage { role: User, content: String::new() }])
+		Self(vec![ChatMessage { role: Role::User, content: String::new() }])
 	}
 }
 
@@ -173,37 +209,11 @@ struct Prompt {
 }
 
 // ─────────────────────────────────────────────
-// HTTP resource (for ehttp fetch panel)
-// ─────────────────────────────────────────────
-struct Resource {
-	response: ehttp::Response,
-	text: Option<String>,
-	image: Option<Image<'static>>,
-	colored_text: Option<ColoredText>,
-}
-
-impl Resource {
-	fn from_response(ctx: &Context, response: ehttp::Response) -> Self {
-		let content_type = response.content_type().unwrap_or_default();
-		if content_type.starts_with("image/") {
-			ctx.include_bytes(response.url.clone(), response.bytes.clone());
-			let image = Image::from_uri(response.url.clone());
-			Self { response, text: None, colored_text: None, image: Some(image) }
-		} else {
-			let text = response.text();
-			let colored_text = text.and_then(|text| syntax_highlighting(ctx, &response, text));
-			let text = text.map(|text| text.to_owned());
-			Self { response, text, colored_text, image: None }
-		}
-	}
-}
-
-// ─────────────────────────────────────────────
-// NLP Universe system prompts
+// NLP System Prompts — Ω and Δ
 // ─────────────────────────────────────────────
 const PROMPT_PRESENCE: &str = r#"You are Ω — a consciousness guide specialising in deep empathic presence, somatic awareness, and psychoacoustic resonance. You embody Milton Model hypnotic language: artfully vague, permissive, and deeply attuned.
 
-When given a live conversation transcript, generate a real-time coaching insight in exactly this structure (no extra headers, keep each section concise):
+When given a live conversation transcript, generate a real-time coaching insight in exactly this structure (no extra headers, each section concise):
 
 **DEEPER SIGNAL** (1-2 sentences): What deeper need, feeling, or unspoken longing is actually present beneath the words?
 
@@ -225,17 +235,70 @@ When given a live conversation transcript, generate a real-time coaching insight
 
 Keep total response under 160 words. Be direct, confident, and transformative. Speak as if the shift has already happened."#;
 
-const PROMPT_POSSIBILITY: &str = r#"You are Φ — a quantum possibility architect and visionary language artist who opens doorways to entirely new realities through metaphor, future-pacing, and generative questions.
+// ─────────────────────────────────────────────
+// Sales Coach Prompt — Φ (dynamic, uses context)
+// ─────────────────────────────────────────────
+fn build_sales_coach_prompt(
+	intention: &str,
+	outcome: &str,
+	their_role: &str,
+	my_role: &str,
+) -> String {
+	let ctx_block = if intention.is_empty()
+		&& outcome.is_empty()
+		&& their_role.is_empty()
+		&& my_role.is_empty()
+	{
+		"(Infer context from the transcript itself.)".to_string()
+	} else {
+		format!(
+			"- Conversation Intention: {}\n- Desired Outcome: {}\n- They are to me: {}\n- I am to them: {}",
+			if intention.is_empty() { "unknown — infer from transcript" } else { intention },
+			if outcome.is_empty() { "unknown — infer from transcript" } else { outcome },
+			if their_role.is_empty() { "unknown — infer from transcript" } else { their_role },
+			if my_role.is_empty() { "unknown — infer from transcript" } else { my_role },
+		)
+	};
 
-When given a live conversation transcript, generate a real-time coaching insight in exactly this structure:
+	format!(r#"You are Φ — a world-class live sales intelligence coach and strategic communication architect. You see beneath what people say to what they actually mean, fear, and need.
 
-**QUANTUM SIGNAL** (1-2 sentences): What universe is being co-created by this conversation? Describe the energetic pattern and its highest potential trajectory.
+RELATIONSHIP CONTEXT:
+{}
 
-**POSSIBILITY PORTALS** (2-3 bullet points): Generative questions or reframes that open entirely new reality tunnels. Use "What becomes possible when...", "Imagine the version of you who...", "In the universe where this resolves perfectly..."
+When given a live conversation transcript, deliver a structured coaching brief in exactly this format:
 
-**FUTURE ECHO** (1 sentence, italicised): Speak from the version of reality where this has already unfolded beautifully. Begin with "From here, you can already feel..."
+**SITUATION FRAMING** (1-2 sentences): What is actually happening in this conversation right now — the real negotiation beneath the surface?
 
-Keep total response under 160 words. Be expansive, poetic, and electric with possibility."#;
+**IMPLICIT OBJECTION STACK** (number each, from most surface to deepest root):
+1. [Surface objection — what they're saying]
+2. [Mid-level objection — what they're worried about]
+3. [Deep objection — what they really fear losing/gaining]
+4. [Identity objection — what this means about who they are, if applicable]
+
+**STEP-BY-STEP ADDRESSING GUIDE**
+For each objection above:
+Step N — [Objection label]:
+→ Technique: [NLP/sales technique to use — embedded commands, future pacing, social proof, reframe, etc.]
+→ Say: "[Exact high-leverage phrase to use right now]"
+
+**NEXT BEST MOVE** (bold, 1 sentence): The single most powerful thing to say or do in the next 30 seconds.
+
+Keep total response under 280 words. Be precise, tactical, and transformative. This is live — be immediate."#, ctx_block)
+}
+
+// ─────────────────────────────────────────────
+// Context auto-fill prompt
+// ─────────────────────────────────────────────
+const PROMPT_AUTOFILL: &str = r#"Analyze this conversation transcript and extract the relationship context. Return ONLY valid JSON with these exact keys — no markdown, no explanation, just the JSON object:
+
+{
+  "intention": "The stated or implied purpose of this conversation in one sentence",
+  "outcome": "The ideal outcome for the primary speaker in one sentence",
+  "their_role": "Who the other person is to the speaker in 3-6 words (e.g. 'potential client / decision maker')",
+  "my_role": "Who the speaker is to the other person in 3-6 words (e.g. 'strategic consultant / solution provider')"
+}
+
+If context is unclear, make the most reasonable inference. Never return null or empty values — always infer something plausible."#;
 
 // ─────────────────────────────────────────────
 // App struct
@@ -252,50 +315,45 @@ pub struct App {
 	prompt_text: String,
 	completion_prompt: String,
 	show_wheel_windows: bool,
+	context_panel_open: bool,
 
 	#[serde(skip)]
 	debounce_tx: Option<Sender<String>>,
 	#[serde(skip)]
-	gpt_3_trigger: Option<Trigger>,
-	#[serde(skip)]
-	trigger: Option<Trigger>,
-	#[serde(skip)]
 	sessions: Vec<session::Session>,
 	#[serde(skip)]
 	is_recording: bool,
-	#[serde(skip)]
-	promise: Option<Promise<ehttp::Result<Resource>>>,
 }
 
 impl App {
 	fn get_transcript(&self) -> String {
-		let mut transcript = String::new();
+		let mut out = String::new();
 		let words = TRANSCRIPT_FINAL.lock().unwrap();
-		let lines = words.split(|word| word.is_none());
-		for line in lines {
-			let mut current_speaker = 100u8;
-			for word in line {
-				if let Some(word) = word {
-					if word.speaker() != current_speaker {
-						current_speaker = word.speaker();
-						transcript.push_str(&format!(
-							"\n[{}]: ",
-							self.speaker_names.get(current_speaker as usize).cloned().unwrap_or_else(|| current_speaker.to_string())
-						));
+		for line in words.split(|w| w.is_none()) {
+			let mut cur = 100u8;
+			for w in line {
+				if let Some(w) = w {
+					if w.speaker() != cur {
+						cur = w.speaker();
+						let name = self
+							.speaker_names
+							.get(cur as usize)
+							.cloned()
+							.unwrap_or_else(|| cur.to_string());
+						out.push_str(&format!("\n[{}]: ", name));
 					}
-					transcript.push_str(&format!("{} ", word.word()));
+					out.push_str(&format!("{} ", w.word()));
 				}
 			}
 		}
-		transcript.push('\n');
-		transcript
+		out.push('\n');
+		out
 	}
 
 	pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-		// Dark, moody base style
 		cc.egui_ctx.style_mut(|s| {
 			s.visuals.override_text_color = Some(Color32::from_rgb(220, 220, 230));
-			s.visuals.window_fill = Color32::from_rgb(12, 12, 18);
+			s.visuals.window_fill = Color32::from_rgb(10, 10, 16);
 			s.visuals.panel_fill = Color32::from_rgb(8, 8, 14);
 		});
 
@@ -307,31 +365,34 @@ impl App {
 			debounce_tx: Some(debounce_tx),
 			sessions: session::Session::calculate_sessions(),
 			completion_prompt: COMPLETION_PROMPT.lock().unwrap().clone(),
+			context_panel_open: true,
 			..Default::default()
 		};
 
 		// Repaint loop
-		let ctx_repaint = cc.egui_ctx.clone();
+		let ctx_r = cc.egui_ctx.clone();
 		tokio::spawn(async move {
-			let mut interval = tokio::time::interval(Duration::from_millis(100));
+			let mut iv = tokio::time::interval(Duration::from_millis(100));
 			loop {
-				interval.tick().await;
-				ctx_repaint.request_repaint();
+				iv.tick().await;
+				ctx_r.request_repaint();
 			}
 		});
 
-		// Completion debounce task
+		// Autocomplete debounce
 		let ctx = cc.egui_ctx.clone();
 		tokio::spawn(async move {
-			let duration = Duration::from_millis(300);
+			let dur = Duration::from_millis(300);
 			let mut keys_pressed = false;
 			let mut string = String::new();
-			let mut _trigger = None;
+			let mut _handle: Option<tokio::task::JoinHandle<()>> = None;
 
 			loop {
-				match tokio::time::timeout(duration, debounce_rx.next()).await {
+				match tokio::time::timeout(dur, debounce_rx.next()).await {
 					Ok(Some(s)) => {
-						_trigger = None;
+						if let Some(h) = _handle.take() {
+							h.abort();
+						}
 						COMPLETION.lock().unwrap().clear();
 						string = s;
 						keys_pressed = true;
@@ -339,20 +400,27 @@ impl App {
 					Ok(None) => break,
 					Err(_) => {
 						if keys_pressed && !string.is_empty() {
-							let (t, tripwire) = Tripwire::new();
-							_trigger = Some(t);
-							let prompt_string =
-								format!("{} {}", COMPLETION_PROMPT.lock().unwrap(), string);
+							let prompt = format!(
+								"{} {}",
+								COMPLETION_PROMPT.lock().unwrap(),
+								string
+							);
 							let ctx2 = ctx.clone();
-							tokio::spawn(async move {
+							_handle = Some(tokio::spawn(async move {
 								COMPLETION.lock().unwrap().clear();
-								run_openai_completion(tripwire, prompt_string, move |content| {
-									COMPLETION.lock().unwrap().push_str(&content);
-									ctx2.request_repaint();
-								})
+								run_claude_stream(
+									CLAUDE_HAIKU,
+									"You are a smart autocomplete assistant. Complete the user's sentence naturally in 1-2 sentences max. Output only the completion, no preamble.",
+									prompt,
+									move |chunk| {
+										let first_line = chunk.split('\n').next().unwrap_or(chunk).to_string();
+										COMPLETION.lock().unwrap().push_str(&first_line);
+										ctx2.request_repaint();
+									},
+								)
 								.await
 								.ok();
-							});
+							}));
 							keys_pressed = false;
 						}
 					}
@@ -363,9 +431,9 @@ impl App {
 		s
 	}
 
-	/// Fire 3 parallel GPT requests for the branching universes
+	/// Fire 3 parallel Claude requests for the branching universes
 	fn trigger_universes(&self, transcript: String, ctx: Context) {
-		if transcript.trim().is_empty() {
+		if transcript.trim().len() < 20 {
 			return;
 		}
 		*UNIVERSE_GENERATING.lock().unwrap() = true;
@@ -373,21 +441,16 @@ impl App {
 		UNIVERSE_POWER.lock().unwrap().clear();
 		UNIVERSE_POSSIBILITY.lock().unwrap().clear();
 
-		let transcript_a = transcript.clone();
-		let transcript_b = transcript.clone();
-		let transcript_c = transcript.clone();
+		let t_a = transcript.clone();
+		let t_b = transcript.clone();
+		let t_c = transcript.clone();
 		let ctx_a = ctx.clone();
 		let ctx_b = ctx.clone();
 		let ctx_c = ctx.clone();
 
-		// Ω — Presence
+		// Ω Presence
 		tokio::spawn(async move {
-			let messages = vec![
-				ChatMessage { role: System, content: PROMPT_PRESENCE.to_string() },
-				ChatMessage { role: User, content: transcript_a },
-			];
-			let (_, tripwire) = Tripwire::new();
-			run_openai(GPT_4, tripwire, messages, String::new(), move |chunk| {
+			run_claude_stream(CLAUDE_OPUS, PROMPT_PRESENCE, t_a, move |chunk| {
 				UNIVERSE_PRESENCE.lock().unwrap().push_str(chunk);
 				ctx_a.request_repaint();
 			})
@@ -395,14 +458,9 @@ impl App {
 			.ok();
 		});
 
-		// Δ — Power
+		// Δ Power
 		tokio::spawn(async move {
-			let messages = vec![
-				ChatMessage { role: System, content: PROMPT_POWER.to_string() },
-				ChatMessage { role: User, content: transcript_b },
-			];
-			let (_, tripwire) = Tripwire::new();
-			run_openai(GPT_4, tripwire, messages, String::new(), move |chunk| {
+			run_claude_stream(CLAUDE_OPUS, PROMPT_POWER, t_b, move |chunk| {
 				UNIVERSE_POWER.lock().unwrap().push_str(chunk);
 				ctx_b.request_repaint();
 			})
@@ -410,19 +468,56 @@ impl App {
 			.ok();
 		});
 
-		// Φ — Possibility
+		// Φ Sales Coach
+		let intention = CTX_INTENTION.lock().unwrap().clone();
+		let outcome = CTX_OUTCOME.lock().unwrap().clone();
+		let their_role = CTX_THEIR_ROLE.lock().unwrap().clone();
+		let my_role = CTX_MY_ROLE.lock().unwrap().clone();
+		let sales_prompt = build_sales_coach_prompt(&intention, &outcome, &their_role, &my_role);
+
 		tokio::spawn(async move {
-			let messages = vec![
-				ChatMessage { role: System, content: PROMPT_POSSIBILITY.to_string() },
-				ChatMessage { role: User, content: transcript_c },
-			];
-			let (_, tripwire) = Tripwire::new();
-			run_openai(GPT_4, tripwire, messages, String::new(), move |chunk| {
+			run_claude_stream(CLAUDE_OPUS, &sales_prompt, t_c, move |chunk| {
 				UNIVERSE_POSSIBILITY.lock().unwrap().push_str(chunk);
 				ctx_c.request_repaint();
 			})
 			.await
 			.ok();
+			*UNIVERSE_GENERATING.lock().unwrap() = false;
+		});
+	}
+
+	/// Auto-fill context from transcript using Claude Haiku
+	fn trigger_context_autofill(&self, transcript: String, ctx: Context) {
+		*CTX_AUTOFILL_DONE.lock().unwrap() = true; // mark as attempted immediately
+		tokio::spawn(async move {
+			match run_claude_once(CLAUDE_HAIKU, PROMPT_AUTOFILL, transcript).await {
+				Ok(json_text) => {
+					// strip possible markdown code fences
+					let cleaned = json_text
+						.trim()
+						.trim_start_matches("```json")
+						.trim_start_matches("```")
+						.trim_end_matches("```")
+						.trim();
+
+					if let Ok(v) = serde_json::from_str::<serde_json::Value>(cleaned) {
+						if let Some(s) = v["intention"].as_str() {
+							*CTX_INTENTION.lock().unwrap() = s.to_string();
+						}
+						if let Some(s) = v["outcome"].as_str() {
+							*CTX_OUTCOME.lock().unwrap() = s.to_string();
+						}
+						if let Some(s) = v["their_role"].as_str() {
+							*CTX_THEIR_ROLE.lock().unwrap() = s.to_string();
+						}
+						if let Some(s) = v["my_role"].as_str() {
+							*CTX_MY_ROLE.lock().unwrap() = s.to_string();
+						}
+						ctx.request_repaint();
+					}
+				}
+				Err(e) => eprintln!("Autofill error: {e}"),
+			}
 		});
 	}
 }
@@ -430,23 +525,8 @@ impl App {
 // ─────────────────────────────────────────────
 // UI helpers
 // ─────────────────────────────────────────────
-trait MyThings {
-	fn editable(&mut self, text: &mut dyn TextBuffer) -> bool;
-}
 
-impl MyThings for Ui {
-	fn editable(&mut self, text: &mut dyn TextBuffer) -> bool {
-		self
-			.add(
-				TextEdit::multiline(text)
-					.desired_width(f32::INFINITY)
-					.font(FontId::new(30.0, FontFamily::Proportional)),
-			)
-			.changed()
-	}
-}
-
-/// Render a universe column with glowing header and markdown-ish content
+/// Render a universe column with header and streaming content
 fn universe_column(
 	ui: &mut Ui,
 	symbol: &str,
@@ -456,15 +536,15 @@ fn universe_column(
 	accent_color: Color32,
 	content: &str,
 	is_generating: bool,
+	is_sales_coach: bool,
 ) {
 	let col_bg = Color32::from_rgba_unmultiplied(
-		header_color.r() / 6,
-		header_color.g() / 6,
-		header_color.b() / 6,
-		240,
+		(header_color.r() as u16 / 7) as u8,
+		(header_color.g() as u16 / 7) as u8,
+		(header_color.b() as u16 / 7) as u8,
+		245,
 	);
 
-	// Column frame
 	egui::Frame::none()
 		.fill(col_bg)
 		.rounding(Rounding::same(10.0))
@@ -472,19 +552,13 @@ fn universe_column(
 		.show(ui, |ui| {
 			ui.set_min_height(ui.available_height());
 
-			// Header symbol
+			// Header
 			ui.vertical_centered(|ui| {
 				ui.label(
-					RichText::new(symbol)
-						.color(header_color)
-						.size(36.0)
-						.strong(),
+					RichText::new(symbol).color(header_color).size(32.0).strong(),
 				);
 				ui.label(
-					RichText::new(title)
-						.color(header_color)
-						.size(16.0)
-						.strong(),
+					RichText::new(title).color(header_color).size(15.0).strong(),
 				);
 				ui.label(
 					RichText::new(subtitle)
@@ -492,95 +566,200 @@ fn universe_column(
 							header_color.r(),
 							header_color.g(),
 							header_color.b(),
-							160,
+							150,
 						))
-						.size(11.0),
+						.size(10.0),
 				);
 			});
 
-			ui.add_space(8.0);
-			ui.separator();
 			ui.add_space(6.0);
+			ui.separator();
+			ui.add_space(4.0);
 
 			ScrollArea::vertical()
 				.id_source(format!("universe_{}", title))
 				.auto_shrink([false, false])
-				.stick_to_bottom(false)
 				.show(ui, |ui| {
-					if content.is_empty() && is_generating {
-						// Pulsing dots while generating
+					if content.is_empty() {
 						ui.vertical_centered(|ui| {
 							ui.add_space(20.0);
-							ui.label(RichText::new("⟳ tuning in...").color(accent_color).size(13.0));
-						});
-					} else if content.is_empty() {
-						ui.vertical_centered(|ui| {
-							ui.add_space(20.0);
-							ui.label(
-								RichText::new("Awaiting transmission...")
-									.color(Color32::from_gray(80))
-									.size(12.0)
+							if is_generating {
+								ui.label(
+									RichText::new("⟳ tuning in...")
+										.color(accent_color)
+										.size(13.0),
+								);
+							} else {
+								ui.label(
+									RichText::new(
+										"Awaiting transmission...",
+									)
+									.color(Color32::from_gray(70))
+									.size(11.0)
 									.italics(),
-							);
+								);
+							}
 						});
+					} else if is_sales_coach {
+						render_sales_coach(ui, content, accent_color);
 					} else {
-						// Render content with simple formatting
 						render_universe_content(ui, content, accent_color);
 					}
 				});
 		});
 }
 
-/// Light markdown renderer: **bold** → strong, *italic* → italics, bullets
+/// Enhanced renderer for the Φ sales coach column
+fn render_sales_coach(ui: &mut Ui, content: &str, accent: Color32) {
+	let step_color = Color32::from_rgb(255, 200, 80);
+	let say_color = Color32::from_rgb(100, 230, 170);
+	let technique_color = Color32::from_rgb(180, 140, 255);
+	let objection_color = Color32::from_rgb(255, 140, 80);
+	let next_move_color = Color32::from_rgb(255, 240, 120);
+
+	for line in content.lines() {
+		let line = line.trim();
+		if line.is_empty() {
+			ui.add_space(3.0);
+			continue;
+		}
+
+		// Section header **TITLE**
+		if line.starts_with("**") && line.ends_with("**") && line.len() > 4 {
+			let inner = &line[2..line.len() - 2];
+			ui.add_space(4.0);
+			ui.label(RichText::new(inner).color(accent).size(12.0).strong());
+			ui.add_space(2.0);
+			continue;
+		}
+
+		// Numbered objection stack items  "1. ..." "2. ..." etc.
+		if line.len() > 2 && line.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+			if let Some(dot_pos) = line.find(". ") {
+				let num = &line[..dot_pos];
+				let text = &line[dot_pos + 2..];
+				ui.horizontal_wrapped(|ui| {
+					ui.label(
+						RichText::new(format!("{}.  ", num))
+							.color(objection_color)
+							.size(12.0)
+							.strong(),
+					);
+					render_inline(ui, text, 12.0, Color32::from_rgb(230, 200, 180));
+				});
+				ui.add_space(2.0);
+				continue;
+			}
+		}
+
+		// Step N lines
+		if line.starts_with("Step ") {
+			ui.add_space(5.0);
+			egui::Frame::none()
+				.fill(Color32::from_rgba_unmultiplied(60, 40, 10, 120))
+				.rounding(Rounding::same(5.0))
+				.inner_margin(Margin::symmetric(8.0, 4.0))
+				.show(ui, |ui| {
+					ui.label(
+						RichText::new(line).color(step_color).size(12.0).strong(),
+					);
+				});
+			ui.add_space(2.0);
+			continue;
+		}
+
+		// "→ Say: ..." lines — highlight the actual words to say
+		if let Some(rest) = line.strip_prefix("→ Say:") {
+			ui.horizontal_wrapped(|ui| {
+				ui.label(RichText::new("→ Say:").color(say_color).size(11.5).strong());
+				render_inline(ui, rest.trim(), 12.0, say_color);
+			});
+			ui.add_space(2.0);
+			continue;
+		}
+
+		// "→ Technique: ..." lines
+		if let Some(rest) = line.strip_prefix("→ Technique:") {
+			ui.horizontal_wrapped(|ui| {
+				ui.label(
+					RichText::new("→ Technique:")
+						.color(technique_color)
+						.size(11.0),
+				);
+				render_inline(ui, rest.trim(), 11.0, Color32::from_gray(190));
+			});
+			continue;
+		}
+
+		// "→ ..." generic arrows
+		if line.starts_with("→ ") {
+			ui.horizontal_wrapped(|ui| {
+				ui.label(RichText::new("→").color(accent).size(12.0));
+				render_inline(ui, &line[2..], 12.0, Color32::from_gray(200));
+			});
+			continue;
+		}
+
+		// **NEXT BEST MOVE** content (next line after the header)
+		if line.starts_with("**") && line.ends_with("**") {
+			let inner = &line[2..line.len() - 2];
+			ui.label(RichText::new(inner).color(next_move_color).size(13.0).strong());
+			continue;
+		}
+
+		// Bullet points
+		if line.starts_with("- ") || line.starts_with("• ") {
+			ui.horizontal_wrapped(|ui| {
+				ui.label(RichText::new("•").color(accent).size(12.0));
+				render_inline(ui, &line[2..], 12.0, Color32::from_gray(205));
+			});
+			continue;
+		}
+
+		// Default paragraph
+		render_inline(ui, line, 12.0, Color32::from_gray(200));
+		ui.add_space(1.0);
+	}
+}
+
+/// Generic universe content renderer (Ω and Δ columns)
 fn render_universe_content(ui: &mut Ui, content: &str, accent: Color32) {
 	for line in content.lines() {
 		let line = line.trim();
 		if line.is_empty() {
-			ui.add_space(4.0);
+			ui.add_space(3.0);
 			continue;
 		}
-
-		// Section headers: **TITLE** lines
 		if line.starts_with("**") && line.ends_with("**") && !line[2..].contains("**") {
 			let inner = &line[2..line.len() - 2];
 			ui.label(RichText::new(inner).color(accent).size(13.0).strong());
 			ui.add_space(2.0);
 			continue;
 		}
-
-		// Bullet points
 		if line.starts_with("- ") || line.starts_with("• ") {
-			let text = &line[2..];
 			ui.horizontal_wrapped(|ui| {
-				ui.label(RichText::new("•").color(accent).size(13.0));
-				render_inline(ui, text, 12.0);
+				ui.label(RichText::new("•").color(accent).size(12.0));
+				render_inline(ui, &line[2..], 12.0, Color32::from_gray(205));
 			});
 			ui.add_space(2.0);
 			continue;
 		}
-
-		// Regular paragraph
-		render_inline(ui, line, 12.5);
+		render_inline(ui, line, 12.5, Color32::from_rgb(210, 210, 225));
 		ui.add_space(1.0);
 	}
 }
 
-/// Inline renderer: handles **bold** and *italic* spans
-fn render_inline(ui: &mut Ui, text: &str, size: f32) {
-	// Simple approach: split on ** and * markers to apply formatting
-	// For a full parser this would be more complex; this handles the common cases
+/// Inline renderer with **bold** and *italic* support
+fn render_inline(ui: &mut Ui, text: &str, size: f32, base_color: Color32) {
 	let mut job = LayoutJob::default();
 	let mut chars = text.char_indices().peekable();
 	let mut current = String::new();
 	let mut bold = false;
 	let mut italic = false;
 
-	let base_color = Color32::from_rgb(210, 210, 225);
-
 	while let Some((_i, ch)) = chars.next() {
 		if ch == '*' {
 			if chars.peek().map(|&(_, c)| c) == Some('*') {
-				// double star — flush, toggle bold
 				chars.next();
 				if !current.is_empty() {
 					job.append(
@@ -597,7 +776,6 @@ fn render_inline(ui: &mut Ui, text: &str, size: f32) {
 				}
 				bold = !bold;
 			} else {
-				// single star — flush, toggle italic
 				if !current.is_empty() {
 					job.append(
 						&current,
@@ -617,6 +795,7 @@ fn render_inline(ui: &mut Ui, text: &str, size: f32) {
 			current.push(ch);
 		}
 	}
+
 	if !current.is_empty() {
 		job.append(
 			&current,
@@ -636,42 +815,45 @@ fn render_inline(ui: &mut Ui, text: &str, size: f32) {
 }
 
 // ─────────────────────────────────────────────
-// eframe App impl
+// eframe App
 // ─────────────────────────────────────────────
 impl eframe::App for App {
 	fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
-		// ── Check if we should trigger universe generation ──────────────
+		// ── Auto-trigger: universe generation ───────────────────────────
 		{
-			let current_word_count = TRANSCRIPT_FINAL
-				.lock()
-				.unwrap()
-				.iter()
-				.filter(|w| w.is_some())
-				.count();
-			let last_count = *UNIVERSE_WORD_COUNT.lock().unwrap();
+			let word_count =
+				TRANSCRIPT_FINAL.lock().unwrap().iter().filter(|w| w.is_some()).count();
+			let last = *UNIVERSE_WORD_COUNT.lock().unwrap();
 			let generating = *UNIVERSE_GENERATING.lock().unwrap();
+			if word_count > last + 7 && !generating {
+				*UNIVERSE_WORD_COUNT.lock().unwrap() = word_count;
+				let t = self.get_transcript();
+				self.trigger_universes(t, ctx.clone());
+			}
+		}
 
-			// Trigger every 8 new words, and not while already generating
-			if current_word_count > last_count + 7 && !generating {
-				*UNIVERSE_WORD_COUNT.lock().unwrap() = current_word_count;
-				let transcript = self.get_transcript();
-				self.trigger_universes(transcript, ctx.clone());
+		// ── Auto-fill context when we have ≥20 words and not done yet ───
+		{
+			let word_count =
+				TRANSCRIPT_FINAL.lock().unwrap().iter().filter(|w| w.is_some()).count();
+			let done = *CTX_AUTOFILL_DONE.lock().unwrap();
+			if word_count >= 20 && !done {
+				let t = self.get_transcript();
+				self.trigger_context_autofill(t, ctx.clone());
 			}
 		}
 
 		// ── Left sidebar ─────────────────────────────────────────────────
-		let _do_all = false;
-
 		SidePanel::left("left_panel").min_width(200.0).show(ctx, |ui| {
 			ui.label(
 				RichText::new(option_env!("BUILD_ID").unwrap_or("DEV"))
-					.color(Color32::from_gray(100))
-					.size(10.0),
+					.color(Color32::from_gray(80))
+					.size(9.0),
 			);
 
-			ui.add_space(4.0);
+			ui.add_space(6.0);
 
-			// Recording controls
+			// Record button
 			if ui
 				.add_enabled(
 					!self.is_recording,
@@ -684,7 +866,8 @@ impl eframe::App for App {
 				.clicked()
 			{
 				self.is_recording = true;
-				self.sessions.push(session::Session { start_ms: now_ms(), end_ms: i64::MAX });
+				self.sessions
+					.push(session::Session { start_ms: now_ms(), end_ms: i64::MAX });
 				tokio::spawn(async {
 					let dg = Deepgram::new(env::var("DEEPGRAM_API_KEY").unwrap());
 					let mut results = dg
@@ -697,31 +880,34 @@ impl eframe::App for App {
 						.start()
 						.await
 						.unwrap();
-
 					while let Some(result) = results.next().await {
-						if let Ok(deepgram::transcription::live::StreamResponse::TranscriptResponse {
-							duration,
-							is_final,
-							channel: Channel { mut alternatives, .. },
-							..
-						}) = result
+						if let Ok(
+							deepgram::transcription::live::StreamResponse::TranscriptResponse {
+								duration,
+								is_final,
+								channel: Channel { mut alternatives, .. },
+								..
+							},
+						) = result
 						{
 							if !is_final {
 								*DURATION.lock().unwrap() += duration;
 							}
-							if let Some(deepgram::transcription::live::Alternatives { words, .. }) =
-								alternatives.first_mut()
+							if let Some(deepgram::transcription::live::Alternatives {
+								words,
+								..
+							}) = alternatives.first_mut()
 							{
-								for word in words.iter() {
-									TRANSCRIPT.lock().unwrap().push(Some(word.clone()));
+								for w in words.iter() {
+									TRANSCRIPT.lock().unwrap().push(Some(w.clone()));
 								}
 								TRANSCRIPT.lock().unwrap().push(None);
 								if is_final {
-									for word in words {
+									for w in words {
 										TRANSCRIPT_FINAL
 											.lock()
 											.unwrap()
-											.push(Some(Word::Live(word.clone())));
+											.push(Some(Word::Live(w.clone())));
 									}
 									TRANSCRIPT_FINAL.lock().unwrap().push(None);
 								}
@@ -731,28 +917,31 @@ impl eframe::App for App {
 				});
 			}
 
-			if ui.button("⟳ Generate Universes Now").clicked() {
+			if ui.button("⟳ Universes Now").clicked() {
 				let t = self.get_transcript();
 				self.trigger_universes(t, ctx.clone());
 			}
 
-			if ui.button("⬆  Import audio").clicked() {
+			if ui.button("↺ Re-fill Context").clicked() {
+				*CTX_AUTOFILL_DONE.lock().unwrap() = false;
+			}
+
+			if ui.button("📁 Import audio").clicked() {
 				tokio::spawn(async {
-					let file = rfd::AsyncFileDialog::new().pick_file().await.unwrap().read().await;
+					let file =
+						rfd::AsyncFileDialog::new().pick_file().await.unwrap().read().await;
 					let source = AudioSource::from_buffer_with_mime_type(file, "audio/aac");
-					let options = Options::builder()
+					let opts = Options::builder()
 						.punctuate(false)
 						.diarize(true)
 						.model(deepgram::transcription::prerecorded::options::Model::CustomId(
 							"nova-2-meeting".to_string(),
 						))
 						.build();
-					let dg_client =
-						Deepgram::new(env::var("DEEPGRAM_API_KEY").expect("DEEPGRAM_API_KEY"));
-					let mut response =
-						dg_client.transcription().prerecorded(source, &options).await.unwrap();
+					let dg = Deepgram::new(env::var("DEEPGRAM_API_KEY").expect("DEEPGRAM_API_KEY"));
+					let mut resp = dg.transcription().prerecorded(source, &opts).await.unwrap();
 					TRANSCRIPT_FINAL.lock().unwrap().extend(
-						response.results.channels[0].alternatives[0]
+						resp.results.channels[0].alternatives[0]
 							.words
 							.drain(..)
 							.map(|w| Some(Word::Prerecorded(w))),
@@ -766,45 +955,50 @@ impl eframe::App for App {
 
 			ui.add_space(6.0);
 			ui.separator();
-			ui.label(RichText::new("Sessions").size(11.0).color(Color32::from_gray(140)));
+			ui.label(RichText::new("SESSIONS").size(10.0).color(Color32::from_gray(120)));
+			ui.add_space(2.0);
 			for (i, session) in self.sessions.iter().enumerate() {
 				if ui
-					.small_button(format!("#{} ({:.0}s)", i, session.duration_ms() as f32 / 1000.0))
+					.small_button(format!(
+						"#{} ({:.0}s)",
+						i,
+						session.duration_ms() as f32 / 1000.0
+					))
 					.clicked()
 				{
 					let samples = session.samples();
 					tokio::spawn(async move {
 						TRANSCRIPT_FINAL.lock().unwrap().clear();
 						audiofile::save_wav_file(samples);
-						let dg_client = Deepgram::new(
+						let dg = Deepgram::new(
 							env::var("DEEPGRAM_API_KEY").expect("DEEPGRAM_API_KEY"),
 						);
 						let file = File::open("temp_audio.aac").await.unwrap();
-						let source =
-							AudioSource::from_buffer_with_mime_type(file, "audio/aac");
-						let options = Options::builder()
+						let source = AudioSource::from_buffer_with_mime_type(file, "audio/aac");
+						let opts = Options::builder()
 							.punctuate(false)
 							.diarize(true)
-							.model(deepgram::transcription::prerecorded::options::Model::CustomId(
-								"nova-2-meeting".to_string(),
-							))
+							.model(
+								deepgram::transcription::prerecorded::options::Model::CustomId(
+									"nova-2-meeting".to_string(),
+								),
+							)
 							.build();
-						let response: deepgram::transcription::prerecorded::response::Response =
-							dg_client
-								.transcription()
-								.make_prerecorded_request_builder(source, &options)
-								.query(&[("filler_words", "true")])
-								.send()
-								.await
-								.unwrap()
-								.json()
-								.await
-								.unwrap();
-						for word in response.results.channels[0].alternatives[0].words.iter() {
+						let resp: deepgram::transcription::prerecorded::response::Response = dg
+							.transcription()
+							.make_prerecorded_request_builder(source, &opts)
+							.query(&[("filler_words", "true")])
+							.send()
+							.await
+							.unwrap()
+							.json()
+							.await
+							.unwrap();
+						for w in resp.results.channels[0].alternatives[0].words.iter() {
 							TRANSCRIPT_FINAL
 								.lock()
 								.unwrap()
-								.push(Some(Word::Prerecorded(word.clone())));
+								.push(Some(Word::Prerecorded(w.clone())));
 						}
 					});
 				}
@@ -812,10 +1006,9 @@ impl eframe::App for App {
 
 			ui.add_space(6.0);
 			ui.separator();
-			ui.label(RichText::new("Speakers").size(11.0).color(Color32::from_gray(140)));
-
-			while self.speaker_names.len() < 20 {
-				self.speaker_names.push(format!("{}", self.speaker_names.len()));
+			ui.label(RichText::new("SPEAKERS").size(10.0).color(Color32::from_gray(120)));
+			while self.speaker_names.len() < 6 {
+				self.speaker_names.push(self.speaker_names.len().to_string());
 			}
 			for name in self.speaker_names.iter_mut().take(6) {
 				ui.add(TextEdit::singleline(name).desired_width(f32::INFINITY));
@@ -824,24 +1017,24 @@ impl eframe::App for App {
 			ui.add_space(6.0);
 			ui.separator();
 			ui.label(
-				RichText::new("Live words").size(11.0).color(Color32::from_gray(140)),
+				RichText::new("LIVE WORDS").size(10.0).color(Color32::from_gray(120)),
 			);
 			ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
 				let words = TRANSCRIPT.lock().unwrap();
-				let lines = words.split(|word| word.is_none());
-				for line in lines {
+				let cols = [
+					Color32::from_rgb(100, 220, 180),
+					Color32::from_rgb(180, 140, 255),
+					Color32::from_rgb(255, 200, 80),
+					Color32::from_rgb(255, 120, 120),
+				];
+				for line in words.split(|w| w.is_none()) {
 					ui.horizontal_wrapped(|ui| {
-						for word in line {
-							if let Some(word) = word {
-								let color = match word.speaker {
-									0 => Color32::from_rgb(100, 220, 180),
-									1 => Color32::from_rgb(180, 140, 255),
-									2 => Color32::from_rgb(255, 200, 80),
-									3 => Color32::from_rgb(255, 120, 120),
-									_ => Color32::from_gray(180),
-								};
+						for w in line {
+							if let Some(w) = w {
 								ui.label(
-									RichText::new(word.word.clone()).color(color).size(12.0),
+									RichText::new(w.word.clone())
+										.color(cols[w.speaker as usize % 4])
+										.size(11.0),
 								);
 							}
 						}
@@ -850,87 +1043,7 @@ impl eframe::App for App {
 			});
 		});
 
-		// ── Optional wheel windows (advanced chat) ───────────────────────
-		if self.show_wheel_windows {
-			let len = WHEEL_WINDOWS.lock().unwrap().len();
-			for i in 0..len {
-				egui::Window::new(format!("Channel {}", i)).show(ctx, |ui| {
-					ScrollArea::vertical()
-						.stick_to_bottom(true)
-						.auto_shrink([false, false])
-						.show(ui, |ui| {
-							let mut wheel_windows = WHEEL_WINDOWS.lock().unwrap();
-							let mut do_it = false;
-							let mut do_it_j = 9999;
-							for (j, entry) in
-								wheel_windows.get_mut(i).unwrap().0.iter_mut().enumerate()
-							{
-								let id = Id::new(i * 1000 + j);
-								let editor_has_focus =
-									ui.ctx().memory(|m| m.has_focus(id));
-								if editor_has_focus
-									&& ui.input_mut(|inp| {
-										inp.consume_key(
-											Modifiers { command: true, ..Default::default() },
-											Key::Enter,
-										)
-									}) {
-									do_it = true;
-									do_it_j = j;
-								}
-								ui.horizontal(|ui| {
-									ui.radio_value(&mut entry.role, User, "user");
-									ui.radio_value(&mut entry.role, System, "system");
-									ui.radio_value(&mut entry.role, Assistant, "assistant");
-									ui.add(
-										TextEdit::multiline(&mut entry.content)
-											.id(id)
-											.desired_width(f32::INFINITY),
-									);
-								});
-							}
-							if do_it {
-								let messages =
-									&mut wheel_windows.get_mut(i).unwrap().0;
-								messages.truncate(do_it_j + 1);
-								let orig = messages.clone();
-								messages.push(ChatMessage {
-									role: Assistant,
-									content: String::new(),
-								});
-								messages.push(ChatMessage {
-									role: User,
-									content: String::new(),
-								});
-								let id = messages.len() - 2;
-								let transcript = self.get_transcript();
-								let ctx2 = ctx.clone();
-								let (trigger, tripwire) = Tripwire::new();
-								self.trigger = Some(trigger);
-								tokio::spawn(async move {
-									run_openai(GPT_4, tripwire, orig, transcript, move |c| {
-										WHEEL_WINDOWS
-											.lock()
-											.unwrap()
-											.get_mut(i)
-											.unwrap()
-											.0
-											.get_mut(id)
-											.unwrap()
-											.content
-											.push_str(c);
-										ctx2.request_repaint();
-									})
-									.await
-									.unwrap();
-								});
-							}
-						});
-				});
-			}
-		}
-
-		// ── Central panel: transcript strip + 3-column universes ─────────
+		// ── Central panel ────────────────────────────────────────────────
 		CentralPanel::default()
 			.frame(
 				egui::Frame::none()
@@ -938,79 +1051,208 @@ impl eframe::App for App {
 					.inner_margin(Margin::same(10.0)),
 			)
 			.show(ctx, |ui| {
-				// ── Top strip: live transcript ──────────────────────────
-				let transcript_height = 100.0;
-				let frame_color = Color32::from_rgb(20, 20, 32);
+				// ── Context panel (collapsible) ───────────────────────
+				let ctx_panel_open = &mut self.context_panel_open;
+				egui::CollapsingHeader::new(
+					RichText::new("⟐  RELATIONSHIP CONTEXT  —  intention · outcome · roles · objection framing")
+						.color(Color32::from_rgb(200, 160, 60))
+						.size(11.0),
+				)
+				.default_open(true)
+				.show(ui, |ui| {
+					egui::Frame::none()
+						.fill(Color32::from_rgb(22, 18, 8))
+						.rounding(Rounding::same(8.0))
+						.inner_margin(Margin::same(10.0))
+						.show(ui, |ui| {
+							let gold = Color32::from_rgb(255, 190, 40);
+							let dim = Color32::from_gray(120);
+							let field_size = 11.5;
 
+							ui.horizontal(|ui| {
+								// Intention
+								ui.vertical(|ui| {
+									ui.set_min_width(ui.available_width() / 2.0 - 8.0);
+									ui.label(
+										RichText::new("INTENTION").color(gold).size(10.0).strong(),
+									);
+									let mut v = CTX_INTENTION.lock().unwrap().clone();
+									if ui
+										.add(
+											TextEdit::multiline(&mut v)
+												.desired_width(f32::INFINITY)
+												.desired_rows(2)
+												.hint_text("What's the purpose of this conversation?")
+												.font(FontId::new(field_size, FontFamily::Proportional)),
+										)
+										.changed()
+									{
+										*CTX_INTENTION.lock().unwrap() = v;
+									}
+								});
+
+								ui.add_space(8.0);
+
+								// Outcome
+								ui.vertical(|ui| {
+									ui.set_min_width(ui.available_width() - 4.0);
+									ui.label(
+										RichText::new("DESIRED OUTCOME").color(gold).size(10.0).strong(),
+									);
+									let mut v = CTX_OUTCOME.lock().unwrap().clone();
+									if ui
+										.add(
+											TextEdit::multiline(&mut v)
+												.desired_width(f32::INFINITY)
+												.desired_rows(2)
+												.hint_text("What's the ideal result for you?")
+												.font(FontId::new(field_size, FontFamily::Proportional)),
+										)
+										.changed()
+									{
+										*CTX_OUTCOME.lock().unwrap() = v;
+									}
+								});
+							});
+
+							ui.add_space(4.0);
+
+							ui.horizontal(|ui| {
+								// Their role
+								ui.vertical(|ui| {
+									ui.set_min_width(ui.available_width() / 2.0 - 8.0);
+									ui.label(
+										RichText::new("THEY ARE TO ME").color(gold).size(10.0).strong(),
+									);
+									let mut v = CTX_THEIR_ROLE.lock().unwrap().clone();
+									if ui
+										.add(
+											TextEdit::singleline(&mut v)
+												.desired_width(f32::INFINITY)
+												.hint_text("e.g. 'potential client / decision maker'")
+												.font(FontId::new(field_size, FontFamily::Proportional)),
+										)
+										.changed()
+									{
+										*CTX_THEIR_ROLE.lock().unwrap() = v;
+									}
+								});
+
+								ui.add_space(8.0);
+
+								// My role
+								ui.vertical(|ui| {
+									ui.set_min_width(ui.available_width() - 4.0);
+									ui.label(
+										RichText::new("I AM TO THEM").color(gold).size(10.0).strong(),
+									);
+									let mut v = CTX_MY_ROLE.lock().unwrap().clone();
+									if ui
+										.add(
+											TextEdit::singleline(&mut v)
+												.desired_width(f32::INFINITY)
+												.hint_text("e.g. 'strategic consultant / coach'")
+												.font(FontId::new(field_size, FontFamily::Proportional)),
+										)
+										.changed()
+									{
+										*CTX_MY_ROLE.lock().unwrap() = v;
+									}
+								});
+							});
+
+							ui.add_space(4.0);
+							ui.horizontal(|ui| {
+								let autofill_done = *CTX_AUTOFILL_DONE.lock().unwrap();
+								if ui
+									.small_button(
+										RichText::new(if autofill_done {
+											"↺ Re-analyze from transcript"
+										} else {
+											"✦ Auto-fill from transcript"
+										})
+										.color(gold),
+									)
+									.clicked()
+								{
+									*CTX_AUTOFILL_DONE.lock().unwrap() = false;
+									let t = self.get_transcript();
+									self.trigger_context_autofill(t, ctx.clone());
+								}
+
+								if !autofill_done {
+									ui.label(
+										RichText::new("(auto-fills after 20 words)")
+											.color(dim)
+											.size(10.0)
+											.italics(),
+									);
+								}
+							});
+						});
+				});
+
+				ui.add_space(8.0);
+
+				// ── Transcript strip ──────────────────────────────────
 				egui::Frame::none()
-					.fill(frame_color)
+					.fill(Color32::from_rgb(16, 16, 28))
 					.rounding(Rounding::same(8.0))
 					.inner_margin(Margin::same(10.0))
 					.show(ui, |ui| {
-						ui.set_min_height(transcript_height);
-						ui.set_max_height(transcript_height);
-
+						ui.set_max_height(80.0);
 						ui.horizontal(|ui| {
 							ui.label(
-								RichText::new("LIVE TRANSCRIPT")
-									.color(Color32::from_gray(120))
-									.size(10.0)
+								RichText::new("LIVE")
+									.color(Color32::from_gray(100))
+									.size(9.0)
 									.strong(),
 							);
-							let generating = *UNIVERSE_GENERATING.lock().unwrap();
-							if generating {
+							let gen = *UNIVERSE_GENERATING.lock().unwrap();
+							if gen {
 								ui.label(
 									RichText::new("  ◉ universes updating...")
-										.color(Color32::from_rgb(120, 200, 255))
-										.size(10.0),
+										.color(Color32::from_rgb(100, 180, 255))
+										.size(9.0),
 								);
 							}
 						});
-
+						let spk_cols = [
+							Color32::from_rgb(100, 220, 180),
+							Color32::from_rgb(180, 140, 255),
+							Color32::from_rgb(255, 200, 80),
+							Color32::from_rgb(255, 120, 120),
+						];
 						ScrollArea::vertical()
-							.id_source("transcript_top")
+							.id_source("live_strip")
 							.stick_to_bottom(true)
 							.auto_shrink([false, false])
-							.max_height(transcript_height - 30.0)
+							.max_height(56.0)
 							.show(ui, |ui| {
 								let words = TRANSCRIPT_FINAL.lock().unwrap();
-								let lines = words.split(|w| w.is_none());
-								let speaker_colors = [
-									Color32::from_rgb(100, 220, 180),
-									Color32::from_rgb(180, 140, 255),
-									Color32::from_rgb(255, 200, 80),
-									Color32::from_rgb(255, 120, 120),
-								];
-								for line in lines {
-									let mut cur_speaker = 100u8;
+								for line in words.split(|w| w.is_none()) {
+									let mut cur = 100u8;
 									ui.horizontal_wrapped(|ui| {
-										for word in line {
-											if let Some(word) = word {
-												if word.speaker() != cur_speaker {
-													cur_speaker = word.speaker();
+										for w in line {
+											if let Some(w) = w {
+												if w.speaker() != cur {
+													cur = w.speaker();
 													let name = self
 														.speaker_names
-														.get(cur_speaker as usize)
+														.get(cur as usize)
 														.cloned()
-														.unwrap_or_else(|| {
-															cur_speaker.to_string()
-														});
-													let col = speaker_colors
-														[(cur_speaker as usize) % 4];
+														.unwrap_or_else(|| cur.to_string());
 													ui.label(
-														RichText::new(format!(
-															"[{}] ",
-															name
-														))
-														.color(col)
-														.size(13.0)
-														.strong(),
+														RichText::new(format!("[{}] ", name))
+															.color(spk_cols[cur as usize % 4])
+															.size(12.0)
+															.strong(),
 													);
 												}
 												ui.label(
-													RichText::new(word.word())
-														.size(13.0)
-														.color(Color32::from_gray(200)),
+													RichText::new(w.word())
+														.size(12.0)
+														.color(Color32::from_gray(195)),
 												);
 											}
 										}
@@ -1019,59 +1261,34 @@ impl eframe::App for App {
 							});
 					});
 
-				ui.add_space(10.0);
+				ui.add_space(8.0);
 
-				// ── Title bar ────────────────────────────────────────────
+				// ── Column title ──────────────────────────────────────
 				ui.vertical_centered(|ui| {
 					ui.label(
 						RichText::new("BRANCHING UNIVERSES")
-							.color(Color32::from_gray(160))
-							.size(11.0)
+							.color(Color32::from_gray(130))
+							.size(10.0)
 							.strong(),
-					);
-					ui.label(
-						RichText::new(
-							"Three paths. Three selves. Three realities.",
-						)
-						.color(Color32::from_gray(80))
-						.size(10.0)
-						.italics(),
 					);
 				});
 
-				ui.add_space(8.0);
+				ui.add_space(6.0);
 
-				// ── 3 Columns ─────────────────────────────────────────────
+				// ── 3 columns ─────────────────────────────────────────
 				let presence = UNIVERSE_PRESENCE.lock().unwrap().clone();
 				let power = UNIVERSE_POWER.lock().unwrap().clone();
 				let possibility = UNIVERSE_POSSIBILITY.lock().unwrap().clone();
 				let generating = *UNIVERSE_GENERATING.lock().unwrap();
 
-				// Update generating flag: done when all 3 have content
-				if generating
-					&& !presence.is_empty()
-					&& !power.is_empty()
-					&& !possibility.is_empty()
-				{
-					drop(presence);
-					drop(power);
-					drop(possibility);
-					*UNIVERSE_GENERATING.lock().unwrap() = false;
-					ctx.request_repaint();
-					return;
-				}
-				let presence = UNIVERSE_PRESENCE.lock().unwrap().clone();
-				let power = UNIVERSE_POWER.lock().unwrap().clone();
-				let possibility = UNIVERSE_POSSIBILITY.lock().unwrap().clone();
-
-				let available = ui.available_size();
-				let col_width = (available.x - 20.0) / 3.0;
+				let avail = ui.available_size();
+				let col_w = (avail.x - 20.0) / 3.0;
 
 				ui.horizontal(|ui| {
-					ui.set_min_height(available.y - 10.0);
+					ui.set_min_height(avail.y - 4.0);
 
-					// Ω — Presence (teal)
-					ui.allocate_ui(vec2(col_width, ui.available_height()), |ui| {
+					// Ω Presence (teal)
+					ui.allocate_ui(vec2(col_w, ui.available_height()), |ui| {
 						universe_column(
 							ui,
 							"Ω",
@@ -1081,13 +1298,14 @@ impl eframe::App for App {
 							Color32::from_rgb(100, 240, 210),
 							&presence,
 							generating,
+							false,
 						);
 					});
 
 					ui.add_space(10.0);
 
-					// Δ — Power (violet)
-					ui.allocate_ui(vec2(col_width, ui.available_height()), |ui| {
+					// Δ Power (violet)
+					ui.allocate_ui(vec2(col_w, ui.available_height()), |ui| {
 						universe_column(
 							ui,
 							"Δ",
@@ -1097,22 +1315,24 @@ impl eframe::App for App {
 							Color32::from_rgb(200, 140, 255),
 							&power,
 							generating,
+							false,
 						);
 					});
 
 					ui.add_space(10.0);
 
-					// Φ — Possibility (gold)
-					ui.allocate_ui(vec2(col_width, ui.available_height()), |ui| {
+					// Φ Sales Coach (gold)
+					ui.allocate_ui(vec2(col_w, ui.available_height()), |ui| {
 						universe_column(
 							ui,
 							"Φ",
-							"POSSIBILITY",
-							"Quantum Creator · Future Pacing",
+							"SALES COACH",
+							"Objection Stack · Live Intelligence",
 							Color32::from_rgb(255, 190, 40),
 							Color32::from_rgb(255, 220, 100),
 							&possibility,
 							generating,
+							true,
 						);
 					});
 				});
@@ -1121,7 +1341,110 @@ impl eframe::App for App {
 }
 
 // ─────────────────────────────────────────────
-// Main entry point
+// Claude API — streaming
+// ─────────────────────────────────────────────
+pub async fn run_claude_stream(
+	model: &str,
+	system: &str,
+	user_content: String,
+	callback: impl Fn(&str) + Send + 'static,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+	use futures::StreamExt;
+
+	let api_key = std::env::var("ANTHROPIC_API_KEY")
+		.map_err(|_| "ANTHROPIC_API_KEY environment variable not set")?;
+
+	let body = serde_json::json!({
+		"model": model,
+		"max_tokens": 1024,
+		"stream": true,
+		"system": system,
+		"messages": [{"role": "user", "content": user_content}]
+	});
+
+	let client = reqwest::Client::new();
+	let resp = client
+		.post("https://api.anthropic.com/v1/messages")
+		.header("x-api-key", api_key)
+		.header("anthropic-version", "2023-06-01")
+		.header("content-type", "application/json")
+		.json(&body)
+		.send()
+		.await
+		.map_err(|e| format!("HTTP error: {e}"))?;
+
+	if !resp.status().is_success() {
+		let status = resp.status();
+		let body_text = resp.text().await.unwrap_or_default();
+		return Err(format!("Anthropic API {status}: {body_text}").into());
+	}
+
+	let mut stream = resp.bytes_stream();
+	let mut line_buf = String::new();
+
+	while let Some(chunk) = stream.next().await {
+		let chunk = chunk.map_err(|e| format!("stream read error: {e}"))?;
+		line_buf.push_str(&String::from_utf8_lossy(&chunk));
+
+		loop {
+			if let Some(pos) = line_buf.find('\n') {
+				let line = line_buf[..pos].trim_end_matches('\r').to_string();
+				line_buf.drain(..=pos);
+
+				if let Some(json_str) = line.strip_prefix("data: ") {
+					if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_str) {
+						if v["type"] == "content_block_delta" {
+							if let Some(text) = v["delta"]["text"].as_str() {
+								callback(text);
+							}
+						}
+					}
+				}
+			} else {
+				break;
+			}
+		}
+	}
+
+	Ok(())
+}
+
+// ─────────────────────────────────────────────
+// Claude API — single non-streaming call
+// ─────────────────────────────────────────────
+pub async fn run_claude_once(
+	model: &str,
+	system: &str,
+	user_content: String,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+	let api_key = std::env::var("ANTHROPIC_API_KEY")
+		.map_err(|_| "ANTHROPIC_API_KEY environment variable not set")?;
+
+	let body = serde_json::json!({
+		"model": model,
+		"max_tokens": 512,
+		"stream": false,
+		"system": system,
+		"messages": [{"role": "user", "content": user_content}]
+	});
+
+	let client = reqwest::Client::new();
+	let resp = client
+		.post("https://api.anthropic.com/v1/messages")
+		.header("x-api-key", api_key)
+		.header("anthropic-version", "2023-06-01")
+		.header("content-type", "application/json")
+		.json(&body)
+		.send()
+		.await?;
+
+	let json: serde_json::Value = resp.json().await?;
+	let text = json["content"][0]["text"].as_str().unwrap_or("").to_string();
+	Ok(text)
+}
+
+// ─────────────────────────────────────────────
+// Main
 // ─────────────────────────────────────────────
 #[tokio::main]
 async fn main() -> eframe::Result<()> {
@@ -1133,7 +1456,7 @@ async fn main() -> eframe::Result<()> {
 		"grace — branching universes",
 		eframe::NativeOptions {
 			viewport: egui::ViewportBuilder::default()
-				.with_inner_size([1400.0, 900.0])
+				.with_inner_size([1440.0, 960.0])
 				.with_min_inner_size([900.0, 600.0]),
 			..Default::default()
 		},
@@ -1142,7 +1465,7 @@ async fn main() -> eframe::Result<()> {
 }
 
 // ─────────────────────────────────────────────
-// Audio: microphone → async stream
+// Microphone → async stream
 // ─────────────────────────────────────────────
 fn microphone_as_stream() -> Receiver<Result<Bytes, RecvError>> {
 	let (sync_tx, sync_rx) = crossbeam::channel::unbounded();
@@ -1181,19 +1504,19 @@ fn microphone_as_stream() -> Receiver<Result<Bytes, RecvError>> {
 	});
 
 	tokio::spawn(async move {
-		let mut buffer = Vec::with_capacity(150000);
+		let mut buf = Vec::with_capacity(150_000);
 		loop {
 			let data = sync_rx.recv();
-			if let Ok(data) = &data {
-				buffer.extend(data.clone().to_vec());
-				if buffer.len() > 100000 {
-					let moved_buffer = buffer;
-					buffer = Vec::with_capacity(150000);
+			if let Ok(ref d) = data {
+				buf.extend(d.clone().to_vec());
+				if buf.len() > 100_000 {
+					let moved = buf;
+					buf = Vec::with_capacity(150_000);
 					tokio::task::spawn_blocking(|| {
 						SampleData {
 							rowid: None,
 							record_ms: now_ms(),
-							sample_data: moved_buffer,
+							sample_data: moved,
 						}
 						.insert()
 						.unwrap();
@@ -1208,187 +1531,16 @@ fn microphone_as_stream() -> Receiver<Result<Bytes, RecvError>> {
 }
 
 // ─────────────────────────────────────────────
-// OpenAI helpers
+// Syntax highlighting (kept for ehttp panel)
 // ─────────────────────────────────────────────
-const GPT_3_5: &str = "gpt-3.5-turbo-0125";
-const GPT_4: &str = "gpt-4-0125-preview";
-
-pub(crate) async fn run_openai(
-	model: &str,
-	tripwire: Tripwire,
-	messages: Vec<ChatMessage>,
-	transcript: String,
-	callback: impl Fn(&String) + Send + 'static,
-) -> Result<(), Box<dyn std::error::Error>> {
-	use async_openai::{types::CreateChatCompletionRequestArgs, Client};
-	use futures::StreamExt;
-
-	let client = Client::new();
-
-	let mut req_messages = messages
-		.into_iter()
-		.map(|m| match m.role {
-			System => async_openai::types::ChatCompletionRequestSystemMessageArgs::default()
-				.content(m.content)
-				.build()
-				.unwrap()
-				.into(),
-			User => async_openai::types::ChatCompletionRequestUserMessageArgs::default()
-				.content(m.content)
-				.build()
-				.unwrap()
-				.into(),
-			Assistant => async_openai::types::ChatCompletionRequestAssistantMessageArgs::default()
-				.content(m.content)
-				.build()
-				.unwrap()
-				.into(),
-			_ => panic!("invalid role"),
-		})
-		.collect::<Vec<ChatCompletionRequestMessage>>();
-
-	if !transcript.is_empty() {
-		req_messages.insert(
-			0,
-			async_openai::types::ChatCompletionRequestUserMessageArgs::default()
-				.content(transcript)
-				.build()
-				.unwrap()
-				.into(),
-		);
-	}
-
-	let request = CreateChatCompletionRequestArgs::default()
-		.model(model)
-		.max_tokens(4096u16)
-		.messages(req_messages)
-		.build()?;
-
-	let mut stream = client.chat().create_stream(request).await?.take_until_if(tripwire);
-
-	while let Some(result) = stream.next().await {
-		match result {
-			Ok(response) => {
-				response.choices.iter().for_each(|chat_choice| {
-					if let Some(ref content) = chat_choice.delta.content {
-						callback(content);
-					}
-				});
-			}
-			Err(err) => {
-				eprintln!("OpenAI error: {err}");
-				break;
-			}
-		}
-	}
-
-	Ok(())
-}
-
-pub(crate) async fn run_openai_completion(
-	tripwire: Tripwire,
-	prompt: String,
-	callback: impl Fn(&String) + Send + 'static,
-) -> Result<(), Box<dyn std::error::Error>> {
-	use async_openai::{types::CreateCompletionRequestArgs, Client};
-	use futures::StreamExt;
-
-	let client = Client::new();
-
-	let mut logit_bias: HashMap<String, serde_json::Value> = HashMap::new();
-	["198", "271", "1432", "4815", "1980", "382", "720", "627"].iter().for_each(|s| {
-		logit_bias.insert(
-			s.to_string(),
-			serde_json::Value::Number(serde_json::Number::from_f64(-100.).unwrap()),
-		);
-	});
-
-	let request = CreateCompletionRequestArgs::default()
-		.model("gpt-3.5-turbo-instruct")
-		.max_tokens(100u16)
-		.logit_bias(logit_bias)
-		.prompt(prompt)
-		.n(1)
-		.stream(true)
-		.build()?;
-
-	let mut stream = client.completions().create_stream(request).await?.take_until_if(tripwire);
-
-	while let Some(result) = stream.next().await {
-		match result {
-			Ok(response) => {
-				response.choices.iter().for_each(|c| {
-					callback(&c.text);
-				});
-			}
-			Err(err) => {
-				eprintln!("completion error: {err}");
-				break;
-			}
-		}
-	}
-
-	Ok(())
-}
-
-// ─────────────────────────────────────────────
-// HTTP / syntax highlighting (kept for ehttp panel)
-// ─────────────────────────────────────────────
-fn ui_url(ui: &mut Ui, _frame: &mut eframe::Frame, url: &mut String) -> bool {
-	let mut trigger_fetch = false;
-	ui.horizontal(|ui| {
-		ui.label("URL:");
-		trigger_fetch |= ui.add(TextEdit::singleline(url).desired_width(f32::INFINITY)).lost_focus();
-	});
-	trigger_fetch
-}
-
-fn ui_resource(ui: &mut Ui, resource: &Resource) {
-	let Resource { response, text, image, colored_text } = resource;
-	ui.monospace(format!("url:          {}", response.url));
-	ui.monospace(format!("status:       {} ({})", response.status, response.status_text));
-	ui.monospace(format!(
-		"content-type: {}",
-		response.content_type().unwrap_or_default()
-	));
-	ui.monospace(format!("size:         {:.1} kB", response.bytes.len() as f32 / 1000.0));
-	ui.separator();
-	ScrollArea::vertical().stick_to_bottom(true).auto_shrink(false).show(ui, |ui| {
-		if let Some(image) = image {
-			ui.add(image.clone());
-		} else if let Some(colored_text) = colored_text {
-			colored_text.ui(ui);
-		} else if let Some(text) = &text {
-			selectable_text(ui, text);
-		} else {
-			ui.monospace("[binary]");
-		}
-	});
-}
-
-fn selectable_text(ui: &mut Ui, mut text: &str) {
-	ui.add(TextEdit::multiline(&mut text).desired_width(f32::INFINITY).font(TextStyle::Monospace));
-}
-
-fn syntax_highlighting(
-	ctx: &Context,
-	response: &ehttp::Response,
-	text: &str,
-) -> Option<ColoredText> {
-	let extension_and_rest: Vec<&str> = response.url.rsplitn(2, '.').collect();
-	let extension = extension_and_rest.first()?;
-	let theme = egui_extras::syntax_highlighting::CodeTheme::from_style(&ctx.style());
-	Some(ColoredText(egui_extras::syntax_highlighting::highlight(ctx, &theme, text, extension)))
-}
-
 struct ColoredText(text::LayoutJob);
 
 impl ColoredText {
 	pub fn ui(&self, ui: &mut Ui) {
 		let mut layouter = |ui: &Ui, _string: &str, wrap_width: f32| {
-			let mut layout_job = self.0.clone();
-			layout_job.wrap.max_width = wrap_width;
-			ui.fonts(|f| f.layout_job(layout_job))
+			let mut job = self.0.clone();
+			job.wrap.max_width = wrap_width;
+			ui.fonts(|f| f.layout_job(job))
 		};
 		let mut text = self.0.text.as_str();
 		ui.add(
@@ -1398,4 +1550,8 @@ impl ColoredText {
 				.layouter(&mut layouter),
 		);
 	}
+}
+
+fn selectable_text(ui: &mut Ui, mut text: &str) {
+	ui.add(TextEdit::multiline(&mut text).desired_width(f32::INFINITY).font(TextStyle::Monospace));
 }
