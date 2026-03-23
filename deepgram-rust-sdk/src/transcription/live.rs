@@ -78,6 +78,87 @@ pub enum StreamResponse {
     },
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deserialize_transcript_response() {
+        let json = r#"{
+            "duration": 2.5,
+            "is_final": true,
+            "channel": {
+                "alternatives": [
+                    {
+                        "transcript": "hello world",
+                        "words": [
+                            {"word": "hello", "start": 0.0, "end": 0.5, "confidence": 0.99, "speaker": 0},
+                            {"word": "world", "start": 0.6, "end": 1.1, "confidence": 0.98, "speaker": 0}
+                        ]
+                    }
+                ]
+            }
+        }"#;
+        let response: StreamResponse = serde_json::from_str(json).unwrap();
+        match response {
+            StreamResponse::TranscriptResponse { duration, is_final, channel } => {
+                assert_eq!(duration, 2.5);
+                assert!(is_final);
+                assert_eq!(channel.alternatives.len(), 1);
+                assert_eq!(channel.alternatives[0].transcript, "hello world");
+                assert_eq!(channel.alternatives[0].words.len(), 2);
+            }
+            _ => panic!("expected TranscriptResponse"),
+        }
+    }
+
+    #[test]
+    fn deserialize_terminal_response() {
+        let json = r#"{
+            "request_id": "abc-123",
+            "created": "2024-01-01T00:00:00Z",
+            "duration": 10.0,
+            "channels": 1
+        }"#;
+        let response: StreamResponse = serde_json::from_str(json).unwrap();
+        match response {
+            StreamResponse::TerminalResponse { request_id, created, duration, channels } => {
+                assert_eq!(request_id, "abc-123");
+                assert_eq!(created, "2024-01-01T00:00:00Z");
+                assert_eq!(duration, 10.0);
+                assert_eq!(channels, 1);
+            }
+            _ => panic!("expected TerminalResponse"),
+        }
+    }
+
+    #[test]
+    fn deserialize_interim_transcript() {
+        let json = r#"{
+            "duration": 0.5,
+            "is_final": false,
+            "channel": {
+                "alternatives": [{"transcript": "hel", "words": []}]
+            }
+        }"#;
+        let response: StreamResponse = serde_json::from_str(json).unwrap();
+        match response {
+            StreamResponse::TranscriptResponse { is_final, .. } => {
+                assert!(!is_final);
+            }
+            _ => panic!("expected TranscriptResponse"),
+        }
+    }
+
+    #[test]
+    fn deserialize_word_speaker_field() {
+        let json = r#"{"word": "hi", "start": 0.0, "end": 0.3, "confidence": 0.95, "speaker": 2}"#;
+        let word: Word = serde_json::from_str(json).unwrap();
+        assert_eq!(word.speaker, 2);
+        assert_eq!(word.word, "hi");
+    }
+}
+
 #[pin_project]
 struct FileChunker {
     chunk_size: usize,

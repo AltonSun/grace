@@ -44,3 +44,33 @@ impl Session {
    .unwrap().iter().map(|blob| blob.to_vec()).flatten().collect()
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn duration_ms_basic() {
+		let session = Session { start_ms: 1000, end_ms: 5000 };
+		assert_eq!(session.duration_ms(), 4000);
+	}
+
+	#[test]
+	fn duration_ms_zero_length() {
+		let session = Session { start_ms: 3000, end_ms: 3000 };
+		assert_eq!(session.duration_ms(), 0);
+	}
+
+	#[test]
+	fn duration_ms_large_values() {
+		let session = Session { start_ms: 0, end_ms: 3_600_000 };
+		assert_eq!(session.duration_ms(), 3_600_000); // 1 hour in ms
+	}
+
+	#[test]
+	fn duration_ms_negative_when_end_before_start() {
+		// Defensive: if end < start (invalid state), duration is negative
+		let session = Session { start_ms: 5000, end_ms: 1000 };
+		assert_eq!(session.duration_ms(), -4000);
+	}
+}
