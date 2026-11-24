@@ -194,22 +194,47 @@ td.r,th.r{text-align:right}
 @media (max-width:520px){.bar{grid-template-columns:110px 1fr 40px}}
 .callout{background:var(--accent-soft);border-left:4px solid var(--accent);padding:12px 16px;border-radius:6px;font-size:14px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
-</style>
 
+/* v2 additions: eyebrow frames, niche table, guide */
+.frame{font-size:11.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);display:block;margin-bottom:4px}
+.quote{font-family:var(--f-display);font-size:clamp(18px,2.4vw,24px);line-height:1.3;border-left:4px solid var(--sea);padding:6px 0 6px 16px;margin:14px 0 0;max-width:46ch}
+.persona{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px 22px}
+.persona div{min-width:0}
+.persona b{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:2px}
+.persona p{margin:0;font-size:14.5px}
+.tabs{flex-wrap:wrap}
+.guide h1{font-size:clamp(26px,4vw,40px);margin-top:22px}
+.thanks{margin-top:18px;background:var(--sea);color:#fff;border-radius:14px;padding:24px;display:grid;grid-template-columns:96px 1fr;gap:20px;align-items:center}
+.thanks img{width:96px;height:96px;border-radius:50%;object-fit:cover;background:#fff}
+.thanks h2{font-size:clamp(22px,3vw,30px)}
+.thanks p{margin:8px 0 0;max-width:62ch;opacity:.95}
+@media (max-width:560px){.thanks{grid-template-columns:1fr}.thanks img{width:72px;height:72px}}
+.steps{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:12px;counter-reset:s}
+.steps>li{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px 16px 16px 60px;position:relative;counter-increment:s;min-width:0}
+.steps>li::before{content:counter(s);position:absolute;left:16px;top:14px;width:30px;height:30px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-weight:800;display:grid;place-items:center;font-family:var(--f-display)}
+.steps h3{font-size:16px;font-family:var(--f-body);font-weight:700;margin-bottom:4px}
+.steps p,.steps ul{margin:4px 0 0;font-size:14px;color:var(--muted)}
+.steps ul{padding-left:18px}
+.steps code,.kbd{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;background:var(--sunk);padding:1px 5px;border-radius:4px;color:var(--fg)}
+.prompt{margin-top:10px;background:var(--sunk);border:1px solid var(--line);border-radius:8px;position:relative}
+.prompt pre{margin:0;padding:12px 14px;white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;color:var(--fg);padding-right:76px}
+.prompt button{position:absolute;top:8px;right:8px;border:1px solid var(--line);background:var(--surface);border-radius:6px;font-size:12px;font-weight:600;padding:4px 10px}
+.wa{font-weight:700;color:var(--sea)}
+</style>
 </head>
 <body>
 <div class="top">
   <div class="wrap topbar">
-    <span><span class="l-id">Dikerjakan tangan · Satu karya, satu stok</span><span class="l-en">Handmade · One piece, one stock</span></span>
-    <span class="hide-sm"><span class="l-id">Kirim ke seluruh Indonesia &amp; luar negeri</span><span class="l-en">Ships across Indonesia &amp; worldwide</span></span>
+    <span><span class="l-id">Diukir tangan di Bali · Satu karya, satu stok</span><span class="l-en">Hand-carved in Bali · One piece, one stock</span></span>
+    <span class="hide-sm"><span class="l-id">Ukiran nama khusus atas permintaan</span><span class="l-en">Custom engraving on request</span></span>
   </div>
   <div class="wrap navrow">
-    <a class="brand" href="#toko" aria-label="O.K. Ukiran Kayu">
+    <a class="brand" href="#toko" aria-label="O.K. Carving">
       <img src="img/logo.jpg" alt="Logo O.K.">
-      <span><b>O.K. Carving</b><small class="l-id">Ukiran kayu · sejak 2010</small><small class="l-en">Wood carving · since 2010</small></span>
+      <span><b>O.K. Carving</b><small class="l-id">Ukiran kayu · Bali</small><small class="l-en">Wood carving · Bali</small></span>
     </a>
     <form class="search" id="searchForm" role="search">
-      <input id="q" type="search" autocomplete="off">
+      <input id="q" type="search" autocomplete="off" aria-label="Search">
       <button type="submit" aria-label="Cari"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
     </form>
     <div class="lang" role="group" aria-label="Language">
@@ -221,29 +246,30 @@ td.r,th.r{text-align:right}
     </button>
   </div>
   <nav class="wrap tabs">
-    <a href="#toko" id="tab-shop"><span class="l-id">Toko</span><span class="l-en">Shop</span></a>
-    <a href="#strategi" id="tab-strat"><span class="l-id">Strategi Distribusi</span><span class="l-en">Distribution Strategy</span></a>
+    <a href="#toko" id="tab-toko"><span class="l-id">Toko</span><span class="l-en">Shop</span></a>
+    <a href="#strategi" id="tab-strategi"><span class="l-id">Strategi Distribusi</span><span class="l-en">Distribution Strategy</span></a>
+    <a href="#untuk-oki" id="tab-untuk-oki"><span class="l-id">Untuk Oki</span><span class="l-en">For Oki</span></a>
   </nav>
 </div>
 
 <!-- SHOP VIEW -->
-<main id="view-shop" class="wrap">
+<main id="view-toko" class="wrap">
   <div class="hero">
     <div class="banner">
       <img src="img/penyu-1.jpg" alt="">
       <div class="txt">
-        <h1><span class="l-id">Satwa laut &amp; burung, diukir dari kayu utuh</span><span class="l-en">Sea life &amp; birds, carved from solid wood</span></h1>
-        <p><span class="l-id">Setiap patung berdiri di atas akar kayu alami. Tidak ada dua dasar yang sama.</span><span class="l-en">Every sculpture stands on a natural root base. No two bases are alike.</span></p>
+        <h1><span class="l-id">Bawa pulang sepotong perjalananmu</span><span class="l-en">Take home a piece of your travels</span></h1>
+        <p><span class="l-id">Diukir tangan oleh Ibu Oki, seniman lokal Bali, sebagai kenangan masa tinggalmu di pulau ini.</span><span class="l-en">Hand-carved by Oki's mom, a local Balinese artist, in honor of your stay on the island.</span></p>
         <button class="cta" data-go="grid"><span class="l-id">Lihat koleksi</span><span class="l-en">See the collection</span></button>
       </div>
     </div>
     <div class="promo">
-      <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="1.6"/><circle cx="17" cy="18" r="1.6"/></svg>
-        <p style="margin:0"><b class="l-id">Gratis ongkir</b><b class="l-en">Free shipping</b><span class="l-id">Min. belanja Rp150.000 (Jawa–Bali)</span><span class="l-en">Orders from Rp150,000 (Java–Bali)</span></p></div>
+      <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/><path d="M12 20h8"/></svg>
+        <p style="margin:0"><b class="l-id">Ukiran nama khusus</b><b class="l-en">Custom engraving</b><span class="l-id">Nama, tanggal, atau lokasi diving di dasar kayu, atas permintaan</span><span class="l-en">A name, date or dive site on the base, on request</span></p></div>
       <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 4 7v5c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V7z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg>
-        <p style="margin:0"><b class="l-id">Packing aman</b><b class="l-en">Safe packing</b><span class="l-id">Busa + kardus ganda, garansi pecah</span><span class="l-en">Foam + double box, breakage covered</span></p></div>
+        <p style="margin:0"><b class="l-id">Aman dibawa di koper</b><b class="l-en">Suitcase-safe packing</b><span class="l-id">Busa + kardus ganda. Ongkir Rp30.000</span><span class="l-en">Foam + double box. Shipping Rp30,000</span></p></div>
       <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="8" width="18" height="13" rx="1"/><path d="M12 8v13M3 12h18M12 8c-2-4-6-4-6-1.5S10 8 12 8c2 0 6 1 6-1.5S14 4 12 8"/></svg>
-        <p style="margin:0"><b class="l-id">Bungkus kado gratis</b><b class="l-en">Free gift wrap</b><span class="l-id">Plus kartu ucapan tulisan tangan</span><span class="l-en">Plus a handwritten card</span></p></div>
+        <p style="margin:0"><b class="l-id">Bungkus kado gratis</b><b class="l-en">Free gift wrapping</b><span class="l-id">Dibungkus kertas kado, siap diberikan</span><span class="l-en">Wrapped in gift paper, ready to give</span></p></div>
     </div>
   </div>
 
@@ -258,100 +284,212 @@ td.r,th.r{text-align:right}
   <div class="bundle">
     <div class="imgs"><img src="img/manta-1.jpg" alt=""><img src="img/paus-2.jpg" alt=""></div>
     <div class="t"><b class="l-id">Paket Samudra: Pari Manta + Paus Bungkuk</b><b class="l-en">Ocean Set: Manta Ray + Humpback Whale</b>
-      <div class="num"><span class="price">Rp145.000</span> <s style="color:var(--muted);font-size:13px">Rp160.000</s> <span style="font-size:13px;color:var(--muted)" class="l-id">· hemat Rp15.000, gratis ongkir</span><span style="font-size:13px;color:var(--muted)" class="l-en">· save Rp15,000, free shipping</span></div></div>
+      <div class="num"><span class="price">Rp145.000</span> <s style="color:var(--muted);font-size:13px">Rp160.000</s> <span style="font-size:13px;color:var(--muted)" class="l-id">· hemat Rp15.000</span><span style="font-size:13px;color:var(--muted)" class="l-en">· save Rp15,000</span></div></div>
     <button class="btn sea" id="addBundle"><span class="l-id">+ Keranjang</span><span class="l-en">+ Add to cart</span></button>
   </div>
 
   <div class="story">
     <img src="img/logo.jpg" alt="">
     <div>
-      <h2 style="font-size:20px"><span class="l-id">Tentang pengrajin</span><span class="l-en">About the maker</span></h2>
-      <p class="l-id">O.K. mengukir sejak 2010. Bagian satwa dipahat dari satu balok kayu, diamplas halus sampai seratnya terlihat, lalu dipasang di atas akar kayu yang dibersihkan dan dikeringkan. Karena dasarnya alami, setiap patung punya bentuk akar yang berbeda dari foto. Ukuran dan warna bisa sedikit berbeda.</p>
-      <p class="l-en">O.K. has been carving since 2010. Each animal is carved from a single block, sanded until the grain shows, then mounted on a cleaned, dried natural root. Because the bases are natural, the root on your piece will differ from the photo. Size and tone may vary slightly.</p>
+      <h2 style="font-size:20px"><span class="l-id">Tentang pengrajin</span><span class="l-en">About the artist</span></h2>
+      <p class="l-id">Setiap patung diukir oleh Ibu Oki, seniman lokal di Bali. Satwanya dipahat dari satu balok kayu, diamplas halus sampai seratnya terlihat, lalu dipasang di atas akar kayu alami. Membeli satu karya berarti mendukung langsung keluarga pengrajin Bali, bukan pabrik. Karena dasarnya alami, akar pada patungmu akan sedikit berbeda dari foto.</p>
+      <p class="l-en">Every sculpture is carved by Oki's mom, a local artist in Bali. Each animal is cut from a single block of wood, sanded until the grain shows, then mounted on a natural root. Buying a piece supports a Balinese artisan family directly, not a factory. Because the bases are natural, the root on your piece will differ a little from the photo.</p>
+      <p style="margin-top:10px">WhatsApp: <span class="wa num">+62 877-6123-1322</span></p>
     </div>
   </div>
 </main>
 
 <!-- STRATEGY VIEW -->
-<main id="view-strat" class="wrap strat" hidden>
+<main id="view-strategi" class="wrap strat" hidden>
   <h1><span class="l-id">Strategi Distribusi Pasar</span><span class="l-en">Market Distribution Strategy</span></h1>
-  <p class="lede l-id">Rencana 6 bulan untuk menjual ukiran O.K. di kisaran Rp75.000–Rp100.000: harga berdasarkan tingkat kesulitan, kanal online untuk volume, kanal offline di kota wisata bahari untuk pembeli yang paling cocok.</p>
-  <p class="lede l-en">A 6‑month plan to sell O.K. carvings in the Rp75,000–Rp100,000 range: prices set by carving difficulty, online channels for volume, and offline channels in marine‑tourism towns for the best‑fit buyers.</p>
+  <p class="lede l-id">Dibangun dengan cara berpikir Seth Godin: jangan mencoba menjual ke semua orang. Pilih kelompok terkecil yang benar‑benar peduli, buat sesuatu yang layak mereka ceritakan, lalu biarkan cerita itu menyebar ke orang‑orang seperti mereka.</p>
+  <p class="lede l-en">Built on Seth Godin's way of thinking: don't try to sell to everyone. Pick the smallest group that truly cares, make something worth talking about, and let that story spread to people like them.</p>
 
   <section>
-    <h2><span class="l-id">1. Penetapan harga</span><span class="l-en">1. Pricing</span></h2>
+    <span class="frame"><span class="l-id">Siapa untuknya? Untuk apa?</span><span class="l-en">Who's it for? What's it for?</span></span>
+    <h2><span class="l-id">1. Audiens terkecil yang layak</span><span class="l-en">1. The smallest viable audience</span></h2>
+    <div class="persona">
+      <div><b><span class="l-id">Siapa</span><span class="l-en">Who</span></b><p class="l-id">Penyelam &amp; snorkeler yang baru saja berenang bersama pari manta di Nusa Penida atau penyu di Amed, Tulamben, atau Gili, dan sedang di 2–3 hari terakhir liburannya di Bali.</p><p class="l-en">Divers and snorkelers who just swam with manta rays at Nusa Penida or turtles at Amed, Tulamben or the Gilis, and are in the last 2–3 days of their Bali trip.</p></div>
+      <div><b><span class="l-id">Profil</span><span class="l-en">Profile</span></b><p class="l-id">Usia 25–45. Wisatawan dari Australia, Eropa, AS, dan wisatawan domestik dari Jakarta/Surabaya. Membelanjakan uang untuk pengalaman, bukan barang. Bepergian dengan koper ringan.</p><p class="l-en">Age 25–45. Travellers from Australia, Europe and the US, plus domestic visitors from Jakarta and Surabaya. Spend on experiences, not things. Travel light.</p></div>
+      <div><b><span class="l-id">Untuk apa</span><span class="l-en">What it's for</span></b><p class="l-id">Menyimpan momen "hari saat aku berenang dengan manta", dan punya benda untuk menceritakannya di rumah. Bukan dekorasi, tapi kenangan.</p><p class="l-en">To keep the moment of "the day I swam with a manta", and to have something at home that starts the story. Not decor: a memory.</p></div>
+      <div><b><span class="l-id">Ketegangan</span><span class="l-en">The tension</span></b><p class="l-id">Mereka tidak mau suvenir plastik buatan pabrik, tapi tidak tahu di mana menemukan karya asli dari seniman lokal.</p><p class="l-en">They don't want factory-made plastic souvenirs, but don't know where to find real work by a local artist.</p></div>
+    </div>
+    <p class="quote l-id">"Orang seperti kita membawa pulang cerita, bukan plastik."</p>
+    <p class="quote l-en">"People like us bring home stories, not plastic."</p>
+  </section>
+
+  <section>
+    <span class="frame">Purple Cow</span>
+    <h2><span class="l-id">2. Apa yang membuatnya layak diceritakan</span><span class="l-en">2. What makes it remarkable</span></h2>
+    <div class="cols">
+      <div class="box"><h3><span class="l-id">Satwa dari diving‑mu</span><span class="l-en">The animal from your dive</span></h3><p class="l-id">Manta untuk penyelam Manta Point, penyu untuk snorkeler Amed dan Gili, paus untuk pecinta laut. Satwanya sama dengan yang baru saja mereka lihat.</p><p class="l-en">A manta for Manta Point divers, turtles for Amed and Gili snorkelers, a whale for ocean lovers. The same animal they just saw.</p></div>
+      <div class="box"><h3><span class="l-id">Diukir namanya</span><span class="l-en">Engraved for them</span></h3><p class="l-id">Ukiran khusus di dasar: <i>"Nusa Penida · 12.08.2026"</i>. Hal ini mengubah suvenir menjadi benda pribadi yang tidak bisa dibeli orang lain.</p><p class="l-en">Custom engraving on the base: <i>"Nusa Penida · 12.08.2026"</i>. It turns a souvenir into a personal object nobody else can buy.</p></div>
+      <div class="box"><h3><span class="l-id">Wajah di balik karya</span><span class="l-en">A face behind the work</span></h3><p class="l-id">Kartu kecil di setiap paket: foto Ibu Oki sedang mengukir + "Diukir di Bali oleh Ibu Oki untuk mengenang masa tinggalmu." Pembeli membeli dari keluarga seniman, bukan dari toko.</p><p class="l-en">A small card in every parcel: a photo of Oki's mom carving + "Carved in Bali by Oki's mom in honor of your stay." Buyers buy from an artist's family, not a shop.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <span class="frame"><span class="l-id">Temui mereka di tempat mereka berada</span><span class="l-en">Meet them where they already are</span></span>
+    <h2><span class="l-id">3. Cara bertemu wisatawan ini</span><span class="l-en">3. How to meet these tourists</span></h2>
     <div class="tbl"><table>
-      <thead><tr><th><span class="l-id">Karya</span><span class="l-en">Piece</span></th><th><span class="l-id">Alasan nilai</span><span class="l-en">Why it's worth it</span></th><th class="r"><span class="l-id">Harga eceran</span><span class="l-en">Retail</span></th><th class="r"><span class="l-id">Harga titip / grosir</span><span class="l-en">Consignment / wholesale</span></th></tr></thead>
-      <tbody id="priceRows"></tbody>
-    </table></div>
-    <p class="note" style="margin-top:8px"><span class="l-id">Harga titip = eceran − 25% komisi toko. Harga eceran dibuat sama di semua kanal supaya pembeli tidak membandingkan dan menunggu diskon.</span><span class="l-en">Consignment = retail − 25% store commission. Retail stays the same on every channel so buyers don't wait for the cheapest one.</span></p>
-  </section>
-
-  <section>
-    <h2><span class="l-id">2. Siapa pembelinya</span><span class="l-en">2. Who buys</span></h2>
-    <div class="cols">
-      <div class="box"><h3><span class="l-id">Penyelam &amp; pecinta laut</span><span class="l-en">Divers &amp; ocean lovers</span></h3><p class="l-id">Manta, penyu, dan paus adalah satwa yang mereka cari saat menyelam. Pembeli paling emosional, cocok untuk Penyu dan Manta.</p><p class="l-en">Mantas, turtles and whales are the animals they dive to see. Most emotional buyers; best fit for the Turtles and Manta.</p></div>
-      <div class="box"><h3><span class="l-id">Wisatawan</span><span class="l-en">Tourists</span></h3><p class="l-id">Bali, Lombok, Labuan Bajo, Raja Ampat, Yogyakarta. Mencari oleh‑oleh yang ringan dan unik, bukan suvenir pabrikan.</p><p class="l-en">Bali, Lombok, Labuan Bajo, Raja Ampat, Yogyakarta. Want light, unique souvenirs, not factory-made ones.</p></div>
-      <div class="box"><h3><span class="l-id">Pembeli kado (25–45 th)</span><span class="l-en">Gift buyers (25–45)</span></h3><p class="l-id">Ulang tahun, pindah rumah, kado kantor. Belanja di Shopee/TikTok, butuh bungkus kado dan pengiriman cepat.</p><p class="l-en">Birthdays, housewarmings, office gifts. Shop on marketplaces and TikTok; want gift wrap and fast delivery.</p></div>
-      <div class="box"><h3><span class="l-id">Pembeli korporat &amp; hotel</span><span class="l-en">Corporate &amp; hotels</span></h3><p class="l-id">Dekorasi kamar resort, hadiah klien, cendera mata acara. Pesanan 10–50 pcs dengan harga grosir.</p><p class="l-en">Resort room decor, client gifts, event souvenirs. Orders of 10–50 pcs at wholesale price.</p></div>
-    </div>
-  </section>
-
-  <section>
-    <h2><span class="l-id">3. Kanal distribusi dan target porsi penjualan</span><span class="l-en">3. Channels and target sales share</span></h2>
-    <div class="bars" id="bars"></div>
-    <p class="note" style="margin-top:8px"><span class="l-id">Target porsi pada bulan ke‑6. Oranye = online, toska = offline/titip, coklat = B2B.</span><span class="l-en">Target share by month 6. Orange = online, teal = offline/consignment, brown = B2B.</span></p>
-  </section>
-
-  <section>
-    <h2><span class="l-id">4. Tahapan 6 bulan</span><span class="l-en">4. Six-month rollout</span></h2>
-    <div class="cols">
-      <div class="box"><span class="phase"><span class="l-id">Bulan 1–2 · Online</span><span class="l-en">Months 1–2 · Online</span></span>
-        <h3><span class="l-id">Buka etalase</span><span class="l-en">Open storefronts</span></h3>
-        <ul class="l-id"><li>Toko di Shopee, Tokopedia &amp; TikTok Shop dengan foto latar putih yang sama</li><li>Katalog WhatsApp Business + website ini sebagai etalase utama</li><li>Video proses ukir 15–30 detik, 3× seminggu</li><li>Gratis ongkir lewat program marketplace</li></ul>
-        <ul class="l-en"><li>Shopee, Tokopedia &amp; TikTok Shop stores with the same white-background photos</li><li>WhatsApp Business catalog + this website as the main storefront</li><li>15–30 s carving-process videos, 3× a week</li><li>Free shipping via marketplace programs</li></ul></div>
-      <div class="box"><span class="phase"><span class="l-id">Bulan 3–4 · Offline</span><span class="l-en">Months 3–4 · Offline</span></span>
-        <h3><span class="l-id">Titip jual di kota bahari</span><span class="l-en">Consign in marine towns</span></h3>
-        <ul class="l-id"><li>Dive center &amp; dive shop di Bali, Gili, Labuan Bajo: 3–5 pcs per toko</li><li>Toko oleh‑oleh, kafe, dan galeri kerajinan</li><li>Stand di pasar kreatif / bazar akhir pekan</li><li>Kartu QR di setiap patung yang menuju website</li></ul>
-        <ul class="l-en"><li>Dive centers &amp; dive shops in Bali, Gili, Labuan Bajo: 3–5 pcs each</li><li>Souvenir shops, cafés and craft galleries</li><li>Stalls at weekend creative markets</li><li>A QR card on every piece linking to this site</li></ul></div>
-      <div class="box"><span class="phase"><span class="l-id">Bulan 5–6 · B2B &amp; ekspor</span><span class="l-en">Months 5–6 · B2B &amp; export</span></span>
-        <h3><span class="l-id">Pesanan besar</span><span class="l-en">Bulk &amp; overseas</span></h3>
-        <ul class="l-id"><li>Tawarkan ke hotel/resort dan EO: paket 10+ pcs, logo bisa diukir di dasar</li><li>Souvenir pernikahan versi mini</li><li>Toko internasional (Etsy / Instagram DM) dengan harga dalam USD</li></ul>
-        <ul class="l-en"><li>Pitch hotels, resorts and event organizers: 10+ pc packs, logo carved on the base</li><li>Mini versions as wedding favors</li><li>International shop (Etsy / Instagram DM) priced in USD</li></ul></div>
-    </div>
-  </section>
-
-  <section>
-    <h2><span class="l-id">5. Pengiriman &amp; kemasan</span><span class="l-en">5. Shipping &amp; packaging</span></h2>
-    <div class="cols">
-      <div class="box"><h3><span class="l-id">Kemasan</span><span class="l-en">Packing</span></h3><p class="l-id">Sayap, ekor, dan paruh adalah bagian paling rapuh. Bungkus dengan busa, isi rongga, kardus ganda, stiker "Fragile". Foto paket sebelum dikirim sebagai bukti.</p><p class="l-en">Wings, tails and beaks break first. Wrap them in foam, fill gaps, double-box, add a "Fragile" sticker. Photograph each parcel before handing it over.</p></div>
-      <div class="box"><h3><span class="l-id">Kurir</span><span class="l-en">Couriers</span></h3><p class="l-id">JNE / J&amp;T / SiCepat untuk reguler, GoSend / Grab untuk instan dalam kota. Selalu pakai asuransi untuk pesanan di atas Rp100.000.</p><p class="l-en">JNE / J&amp;T / SiCepat for regular, GoSend / Grab for same-city instant. Always insure orders above Rp100,000.</p></div>
-      <div class="box"><h3><span class="l-id">Stok</span><span class="l-en">Stock</span></h3><p class="l-id">Karena setiap karya unik, tandai "1 tersedia". Setelah terjual, unggah karya baru dengan foto baru dan buka pre‑order 7–14 hari.</p><p class="l-en">Each piece is unique, so list it as "1 available". Once sold, upload the next piece with new photos and offer a 7–14 day pre-order.</p></div>
-    </div>
-  </section>
-
-  <section>
-    <h2><span class="l-id">6. Angka yang dipantau</span><span class="l-en">6. Numbers to watch</span></h2>
-    <div class="tbl"><table>
-      <thead><tr><th><span class="l-id">Indikator</span><span class="l-en">Metric</span></th><th class="r"><span class="l-id">Target bulan 3</span><span class="l-en">Month 3 target</span></th><th class="r"><span class="l-id">Target bulan 6</span><span class="l-en">Month 6 target</span></th></tr></thead>
-      <tbody class="num">
-        <tr><td><span class="l-id">Karya terjual per bulan</span><span class="l-en">Pieces sold per month</span></td><td class="r">15</td><td class="r">40</td></tr>
-        <tr><td><span class="l-id">Omzet per bulan (rata‑rata Rp88.000/pcs)</span><span class="l-en">Monthly revenue (avg Rp88,000/pc)</span></td><td class="r">Rp1.320.000</td><td class="r">Rp3.520.000</td></tr>
-        <tr><td><span class="l-id">Toko titip aktif</span><span class="l-en">Active consignment stores</span></td><td class="r">3</td><td class="r">8</td></tr>
-        <tr><td><span class="l-id">Pembeli ulang</span><span class="l-en">Repeat buyers</span></td><td class="r">10%</td><td class="r">20%</td></tr>
-        <tr><td><span class="l-id">Rasio rusak saat kirim</span><span class="l-en">Damaged-in-transit rate</span></td><td class="r">&lt; 3%</td><td class="r">&lt; 1%</td></tr>
+      <thead><tr><th><span class="l-id">Tempat</span><span class="l-en">Where</span></th><th><span class="l-id">Momen</span><span class="l-en">The moment</span></th><th><span class="l-id">Yang dilakukan</span><span class="l-en">What to do</span></th></tr></thead>
+      <tbody>
+        <tr><td><b><span class="l-id">Mobil Oki</span><span class="l-en">Oki's car</span></b></td><td><span class="l-id">Perjalanan pulang dari pelabuhan atau lokasi diving, saat tamu masih bersemangat</span><span class="l-en">The ride back from the harbor or dive site, while guests are still buzzing</span></td><td><span class="l-id">Satu manta + satu penyu di dashboard, kartu QR di kursi belakang. Ceritakan: "Ibu saya yang mengukir ini."</span><span class="l-en">One manta + one turtle on the dashboard, a QR card on the back seat. Tell the story: "My mom carved these."</span></td></tr>
+        <tr><td><b><span class="l-id">Dive center</span><span class="l-en">Dive centers</span></b><br><small>Sanur · Padang Bai · Nusa Penida · Amed · Tulamben</small></td><td><span class="l-id">Setelah diving, saat logbook ditandatangani</span><span class="l-en">After the dive, while logbooks get signed</span></td><td><span class="l-id">Titip 3–5 karya di meja kasir. Komisi 25% untuk toko. Instruktur menjadi penyambung cerita.</span><span class="l-en">Consign 3–5 pieces at the front desk. 25% commission for the shop. Instructors become the storytellers.</span></td></tr>
+        <tr><td><b><span class="l-id">Pelabuhan fast boat</span><span class="l-en">Fast-boat harbors</span></b><br><small>Sanur · Padang Bai</small></td><td><span class="l-id">Menunggu kapal 30–60 menit, tidak ada kegiatan lain</span><span class="l-en">Waiting 30–60 minutes for the boat with nothing to do</span></td><td><span class="l-id">Kerja sama dengan agen tiket: satu rak kecil + kartu QR.</span><span class="l-en">Partner with a ticket agent: one small shelf + QR cards.</span></td></tr>
+        <tr><td><b><span class="l-id">Tuan rumah villa &amp; homestay</span><span class="l-en">Villa &amp; homestay hosts</span></b></td><td><span class="l-id">Hari check‑out, saat tamu mencari oleh‑oleh terakhir</span><span class="l-en">Checkout day, when guests look for a last gift</span></td><td><span class="l-id">Satu karya di ruang tamu villa + halaman di buku panduan tamu. Komisi per penjualan.</span><span class="l-en">One piece in the villa lounge + a page in the guest welcome book. Commission per sale.</span></td></tr>
+        <tr><td><b>Instagram &amp; TikTok</b></td><td><span class="l-id">Malam setelah diving, saat mereka mengunggah foto</span><span class="l-en">The evening after the dive, when they post their photos</span></td><td><span class="l-id">Pantau tag lokasi Manta Point &amp; Amed. Beri komentar yang tulus, bukan iklan.</span><span class="l-en">Follow the Manta Point and Amed location tags. Leave genuine comments, not ads.</span></td></tr>
       </tbody>
     </table></div>
   </section>
 
   <section>
-    <div class="callout"><span class="l-id"><b>Langkah pertama minggu ini:</b> foto ulang setiap karya dari 4 sudut, unggah ke Shopee &amp; TikTok Shop dengan harga di atas, lalu hubungi 3 dive center terdekat untuk menawarkan titip jual.</span><span class="l-en"><b>First step this week:</b> reshoot every piece from 4 angles, list them on Shopee &amp; TikTok Shop at the prices above, then contact the 3 nearest dive centers about consignment.</span></div>
+    <span class="frame">Permission marketing</span>
+    <h2><span class="l-id">4. Minta izin, lalu jaga hubungan</span><span class="l-en">4. Earn permission, then keep in touch</span></h2>
+    <div class="cols">
+      <div class="box"><h3><span class="l-id">Saat membeli</span><span class="l-en">At purchase</span></h3><p class="l-id">"Boleh saya kirim foto saat ukiran namamu sedang dikerjakan?" Hampir semua orang akan bilang ya. Itu izin pertama.</p><p class="l-en">"May I send you a photo while your engraving is being carved?" Almost everyone says yes. That's the first permission.</p></div>
+      <div class="box"><h3><span class="l-id">Diharapkan, pribadi, relevan</span><span class="l-en">Anticipated, personal, relevant</span></h3><p class="l-id">Kirim lewat WhatsApp: foto proses ukir, video pengemasan, lalu tanyakan foto patung di rumah mereka. Jangan kirim promo massal.</p><p class="l-en">Send on WhatsApp: a carving-in-progress photo, a packing video, then ask for a photo of the piece at their home. Never send mass promos.</p></div>
+      <div class="box"><h3><span class="l-id">Satu tahun kemudian</span><span class="l-en">One year later</span></h3><p class="l-id">"Sudah setahun sejak kamu berenang dengan manta." Pesan ini mendatangkan pesanan ulang dan kado untuk teman yang akan ke Bali.</p><p class="l-en">"It's been a year since you swam with the mantas." This message brings repeat orders and gifts for friends heading to Bali.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="l-id">5. Harga</span><span class="l-en">5. Pricing</span></h2>
+    <div class="tbl"><table>
+      <thead><tr><th><span class="l-id">Karya</span><span class="l-en">Piece</span></th><th><span class="l-id">Alasan nilai</span><span class="l-en">Why it's worth it</span></th><th class="r"><span class="l-id">Harga eceran</span><span class="l-en">Retail</span></th><th class="r"><span class="l-id">Harga titip (komisi 25%)</span><span class="l-en">Consignment (25% commission)</span></th></tr></thead>
+      <tbody id="priceRows"></tbody>
+    </table></div>
+    <p class="note" style="margin-top:8px"><span class="l-id">Ongkir Rp30.000 per pesanan. Ukiran khusus dan bungkus kertas kado tersedia. Harga eceran sama di semua tempat, supaya mitra titip tidak merasa disaingi.</span><span class="l-en">Shipping is Rp30,000 per order. Custom engraving and gift-paper wrapping are available. Retail is the same everywhere, so consignment partners never feel undercut.</span></p>
+  </section>
+
+  <section>
+    <span class="frame">Tribes</span>
+    <h2><span class="l-id">6. Tahapan: mulai sangat kecil, lalu melebar</span><span class="l-en">6. Rollout: start tiny, then widen</span></h2>
+    <div class="cols">
+      <div class="box"><span class="phase"><span class="l-id">Minggu 1–4</span><span class="l-en">Weeks 1–4</span></span>
+        <h3><span class="l-id">Hanya penyelam manta</span><span class="l-en">Manta divers only</span></h3>
+        <ul class="l-id"><li>Mobil Oki + 3 dive center di Sanur &amp; Nusa Penida</li><li>Stok 10 manta + 5 penyu</li><li>Target: 10 terjual, 10 foto pembeli bahagia</li></ul>
+        <ul class="l-en"><li>Oki's car + 3 dive centers in Sanur &amp; Nusa Penida</li><li>Stock 10 mantas + 5 turtles</li><li>Goal: 10 sold, 10 photos of happy buyers</li></ul></div>
+      <div class="box"><span class="phase"><span class="l-id">Bulan 2–3</span><span class="l-en">Months 2–3</span></span>
+        <h3><span class="l-id">Snorkeler penyu</span><span class="l-en">Turtle snorkelers</span></h3>
+        <ul class="l-id"><li>Tambah Amed, Tulamben, pelabuhan ke Gili</li><li>5 tuan rumah villa sebagai mitra</li><li>Gunakan foto pembeli sebagai bukti sosial</li></ul>
+        <ul class="l-en"><li>Add Amed, Tulamben and the Gili boat harbors</li><li>5 villa hosts as partners</li><li>Use buyer photos as social proof</li></ul></div>
+      <div class="box"><span class="phase"><span class="l-id">Bulan 4–6</span><span class="l-en">Months 4–6</span></span>
+        <h3><span class="l-id">Ikuti mereka pulang</span><span class="l-en">Follow them home</span></h3>
+        <ul class="l-id"><li>Website ini + WhatsApp untuk pesanan dari luar negeri</li><li>Instagram, Etsy untuk teman‑teman pembeli</li><li>Shopee/Tokopedia/TikTok Shop untuk wisatawan domestik</li><li>Setelah itu: hotel &amp; resort</li></ul>
+        <ul class="l-en"><li>This site + WhatsApp for orders from abroad</li><li>Instagram and Etsy for buyers' friends</li><li>Shopee/Tokopedia/TikTok Shop for domestic travellers</li><li>After that: hotels &amp; resorts</li></ul></div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="l-id">7. Target porsi penjualan per kanal (bulan ke‑6)</span><span class="l-en">7. Target sales share by channel (month 6)</span></h2>
+    <div class="bars" id="bars"></div>
+    <p class="note" style="margin-top:8px"><span class="l-id">Toska = bertemu langsung di Bali, oranye = online, coklat = B2B.</span><span class="l-en">Teal = met in person in Bali, orange = online, brown = B2B.</span></p>
+  </section>
+
+  <section>
+    <h2><span class="l-id">8. Angka yang dipantau</span><span class="l-en">8. Numbers to watch</span></h2>
+    <div class="tbl"><table>
+      <thead><tr><th><span class="l-id">Indikator</span><span class="l-en">Metric</span></th><th class="r"><span class="l-id">Bulan 1</span><span class="l-en">Month 1</span></th><th class="r"><span class="l-id">Bulan 6</span><span class="l-en">Month 6</span></th></tr></thead>
+      <tbody class="num">
+        <tr><td><span class="l-id">Karya terjual per bulan</span><span class="l-en">Pieces sold per month</span></td><td class="r">10</td><td class="r">40</td></tr>
+        <tr><td><span class="l-id">Omzet (rata‑rata Rp88.000/pcs)</span><span class="l-en">Revenue (avg Rp88,000/pc)</span></td><td class="r"><span class="l-id">Rp880.000</span><span class="l-en">Rp880,000</span></td><td class="r"><span class="l-id">Rp3.520.000</span><span class="l-en">Rp3,520,000</span></td></tr>
+        <tr><td><span class="l-id">Pesanan dengan ukiran khusus</span><span class="l-en">Orders with custom engraving</span></td><td class="r">30%</td><td class="r">50%</td></tr>
+        <tr><td><span class="l-id">Mitra aktif (dive center, villa, agen)</span><span class="l-en">Active partners (dive centers, villas, agents)</span></td><td class="r">3</td><td class="r">12</td></tr>
+        <tr><td><span class="l-id">Pembeli yang mengirim foto / rujukan</span><span class="l-en">Buyers who send a photo or a referral</span></td><td class="r">5</td><td class="r">25</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <div class="callout"><span class="l-id"><b>Langkah pertama minggu ini:</b> taruh satu manta dan satu penyu di mobil Oki, cetak 50 kartu QR yang menuju website ini, dan tawarkan titip jual ke satu dive center di Sanur.</span><span class="l-en"><b>First step this week:</b> put one manta and one turtle in Oki's car, print 50 QR cards linking to this site, and offer consignment to one dive center in Sanur.</span></div>
+  </section>
+</main>
+
+<!-- FOR OKI VIEW -->
+<main id="view-untuk-oki" class="wrap guide" hidden>
+  <div class="thanks">
+    <img src="img/logo.jpg" alt="">
+    <div>
+      <h2><span class="l-id">Terima kasih, Oki!</span><span class="l-en">Thank you, Oki!</span></h2>
+      <p class="l-id">Website ini adalah hadiah kecil sebagai ucapan terima kasih atas perjalanan yang lancar. Semoga karya Ibu sampai ke banyak rumah di seluruh dunia, dan setiap patung membawa pulang cerita tentang Bali.</p>
+      <p class="l-en">This website is a small gift to say thank you for the smooth ride. May your mom's carvings find homes all over the world, and may every piece carry a story of Bali back with it.</p>
+    </div>
+  </div>
+
+  <h1><span class="l-id">Cara menyalin &amp; mengubah halaman ini dengan AI</span><span class="l-en">How to copy and change this page with AI</span></h1>
+  <p class="lede l-id">Tidak perlu bisa coding. Kamu hanya butuh laptop, browser (Chrome), dan akun gratis di aplikasi AI seperti Claude (claude.ai) atau ChatGPT (chatgpt.com).</p>
+  <p class="lede l-en">No coding needed. You only need a laptop, a browser (Chrome), and a free account with an AI app such as Claude (claude.ai) or ChatGPT (chatgpt.com).</p>
+
+  <section>
+    <ol class="steps">
+      <li><h3><span class="l-id">Simpan folder website</span><span class="l-en">Save the website folder</span></h3>
+        <p class="l-id">Kamu akan menerima file <code>oki-shop.zip</code>. Klik kanan → <b>Extract / Ekstrak</b>. Di dalamnya ada <code>index.html</code> (halamannya) dan folder <code>img</code> (foto). Keduanya harus selalu berada di folder yang sama.</p>
+        <p class="l-en">You'll receive a file called <code>oki-shop.zip</code>. Right-click → <b>Extract</b>. Inside are <code>index.html</code> (the page) and an <code>img</code> folder (the photos). Always keep them together in the same folder.</p></li>
+      <li><h3><span class="l-id">Buka dan coba</span><span class="l-en">Open it and try it</span></h3>
+        <p class="l-id">Klik dua kali <code>index.html</code>. Website terbuka di browser, bahkan tanpa internet. Sebelum mengubah apa pun, salin seluruh folder dan beri nama <code>cadangan</code>. Kalau ada yang rusak, kamu bisa kembali ke sini.</p>
+        <p class="l-en">Double-click <code>index.html</code>. The site opens in your browser, even offline. Before changing anything, copy the whole folder and name it <code>backup</code>. If something breaks, you can always go back.</p></li>
+      <li><h3><span class="l-id">Minta AI mengubahnya</span><span class="l-en">Ask the AI to change it</span></h3>
+        <p class="l-id">Buka claude.ai atau chatgpt.com, klik ikon klip/➕ untuk melampirkan <code>index.html</code>, lalu tempel salah satu perintah di bawah. Ganti teks dalam [kurung] dengan keinginanmu.</p>
+        <p class="l-en">Open claude.ai or chatgpt.com, click the paperclip/➕ icon to attach <code>index.html</code>, then paste one of the prompts below. Replace the text in [brackets] with what you want.</p>
+        <div class="prompt"><pre class="l-id">Ini file website toko saya (index.html). Saya bukan programmer.
+Ubah harga [Pari Manta] menjadi [Rp80.000]. Jangan ubah yang lain.
+Berikan kembali file lengkapnya dari awal sampai akhir.</pre><pre class="l-en">This is my shop website file (index.html). I am not a programmer.
+Change the price of the [Manta Ray] to [Rp80,000]. Change nothing else.
+Give me back the complete file from start to finish.</pre><button data-copy>Copy</button></div>
+        <div class="prompt"><pre class="l-id">Tambahkan produk baru ke daftar produk di file ini:
+- Nama Indonesia: [Naga Ukir Kayu]
+- Nama Inggris: [Wooden Dragon Carving]
+- Harga: [90000]
+- Kategori: [sea atau bird]
+- Foto: [img/naga-1.jpg, img/naga-2.jpg]
+- Ukuran: [± 20 × 10 × 15 cm]
+- Deskripsi: [tulis 2 kalimat]
+Jangan ubah yang lain. Berikan file lengkapnya.</pre><pre class="l-en">Add a new product to the product list in this file:
+- Indonesian name: [Naga Ukir Kayu]
+- English name: [Wooden Dragon Carving]
+- Price: [90000]
+- Category: [sea or bird]
+- Photos: [img/naga-1.jpg, img/naga-2.jpg]
+- Size: [approx. 20 × 10 × 15 cm]
+- Description: [write 2 sentences]
+Change nothing else. Give me the complete file.</pre><button data-copy>Copy</button></div>
+        <div class="prompt"><pre class="l-id">Pakai file ini sebagai template untuk toko baru milik [nama],
+yang menjual [produk]. Ganti logo, produk, harga, nomor WhatsApp
+(WA_NUMBER), dan teks "Tentang pengrajin" dengan: [isi di sini].
+Pertahankan desain, tombol bahasa, dan keranjang.
+Berikan file lengkapnya.</pre><pre class="l-en">Use this file as a template for a new shop for [name],
+selling [product]. Replace the logo, products, prices, WhatsApp
+number (WA_NUMBER) and the "About the artist" text with: [details here].
+Keep the design, the language switch and the cart.
+Give me the complete file.</pre><button data-copy>Copy</button></div>
+        <div class="prompt"><pre class="l-id">Saya tidak paham langkah ini: [jelaskan masalahnya].
+Jelaskan dengan sangat sederhana, langkah demi langkah,
+untuk orang yang belum pernah membuat website.</pre><pre class="l-en">I don't understand this step: [describe the problem].
+Explain it very simply, step by step,
+for someone who has never made a website.</pre><button data-copy>Copy</button></div></li>
+      <li><h3><span class="l-id">Simpan jawaban AI</span><span class="l-en">Save the AI's answer</span></h3>
+        <ul class="l-id"><li>Klik tombol <b>Copy</b> di jawaban AI.</li><li>Windows: klik kanan <code>index.html</code> → Open with → <b>Notepad</b>. Mac: buka dengan <b>TextEdit</b>, lalu menu Format → Make Plain Text.</li><li>Tekan <span class="kbd">Ctrl+A</span> (Mac: <span class="kbd">⌘A</span>), lalu tempel, lalu simpan.</li><li>Buka lagi <code>index.html</code> di browser untuk melihat hasilnya. Cek juga di HP.</li></ul>
+        <ul class="l-en"><li>Click the <b>Copy</b> button on the AI's answer.</li><li>Windows: right-click <code>index.html</code> → Open with → <b>Notepad</b>. Mac: open it with <b>TextEdit</b>, then Format → Make Plain Text.</li><li>Press <span class="kbd">Ctrl+A</span> (Mac: <span class="kbd">⌘A</span>), paste, then save.</li><li>Open <code>index.html</code> in the browser again to see the result. Check it on a phone too.</li></ul></li>
+      <li><h3><span class="l-id">Foto karya baru</span><span class="l-en">Photograph new pieces</span></h3>
+        <p class="l-id">Latar putih, cahaya siang dari jendela, 3–4 sudut. Beri nama file huruf kecil tanpa spasi (contoh <code>naga-1.jpg</code>) dan taruh di folder <code>img</code>.</p>
+        <p class="l-en">White background, daylight from a window, 3–4 angles. Name files in lowercase with no spaces (for example <code>naga-1.jpg</code>) and put them in the <code>img</code> folder.</p></li>
+      <li><h3><span class="l-id">Online gratis</span><span class="l-en">Put it online for free</span></h3>
+        <p class="l-id">Buka <b>app.netlify.com/drop</b>, buat akun gratis, lalu seret seluruh folder ke halaman itu. Kamu langsung mendapat link seperti <code>oki-carving.netlify.app</code>. Untuk memperbarui, seret folder baru ke situs yang sama (tab "Deploys").</p>
+        <p class="l-en">Go to <b>app.netlify.com/drop</b>, create a free account, and drag the whole folder onto the page. You get a link like <code>oki-carving.netlify.app</code> right away. To update, drag the new folder onto the same site (the "Deploys" tab).</p></li>
+      <li><h3><span class="l-id">Sebarkan link-nya</span><span class="l-en">Share the link</span></h3>
+        <p class="l-id">Taruh link di bio Instagram dan katalog WhatsApp Business. Buat kode QR gratis (misalnya di Canva), cetak di kartu kecil, dan letakkan di mobil serta di samping setiap patung yang dititipkan.</p>
+        <p class="l-en">Put the link in your Instagram bio and WhatsApp Business catalog. Make a free QR code (for example in Canva), print it on small cards, and place them in the car and next to every consigned piece.</p></li>
+    </ol>
+  </section>
+  <section>
+    <div class="callout"><span class="l-id"><b>Tips:</b> minta AI mengubah <b>satu hal</b> setiap kali, dan selalu minta "file lengkapnya". Kalau hasilnya aneh, kembali ke folder cadangan dan coba lagi.</span><span class="l-en"><b>Tip:</b> ask the AI to change <b>one thing</b> at a time, and always ask for "the complete file". If the result looks wrong, go back to your backup folder and try again.</span></div>
   </section>
 </main>
 
 <footer><div class="wrap">
-  <span>© 2026 O.K. Carving</span>
-  <span><span class="l-id">Pembayaran: transfer bank, QRIS, e‑wallet, COD (marketplace)</span><span class="l-en">Payment: bank transfer, QRIS, e‑wallet, COD (marketplaces)</span></span>
+  <span>© 2026 O.K. Carving · Bali · WhatsApp <span class="num">+62 877-6123-1322</span></span>
+  <span><span class="l-id">Pembayaran: transfer bank, QRIS, e‑wallet</span><span class="l-en">Payment: bank transfer, QRIS, e‑wallet</span></span>
 </div></footer>
 
 <!-- product sheet -->
@@ -381,20 +519,23 @@ td.r,th.r{text-align:right}
   <div class="lines" id="lines"></div>
   <div class="foot">
     <div class="row num"><span class="l-id">Subtotal</span><span class="l-en">Subtotal</span><span id="sub"></span></div>
-    <div class="row num"><span class="l-id">Ongkir (estimasi)</span><span class="l-en">Shipping (estimate)</span><span id="ship"></span></div>
+    <div class="row num"><span class="l-id">Ongkir</span><span class="l-en">Shipping</span><span id="ship"></span></div>
     <div class="row total num"><span>Total</span><span id="tot"></span></div>
-    <label for="addr" class="note"><span class="l-id">Nama, alamat &amp; kota tujuan</span><span class="l-en">Name, address &amp; city</span></label>
+    <label for="engrave" class="note"><span class="l-id">Ukiran khusus (opsional): nama, tanggal, lokasi diving</span><span class="l-en">Custom engraving (optional): name, date, dive site</span></label>
+    <input id="engrave" type="text" style="font:inherit;font-size:13px;border:1px solid var(--line);border-radius:6px;background:var(--sunk);color:var(--fg);padding:8px">
+    <label for="addr" class="note"><span class="l-id">Nama, alamat / hotel &amp; kota tujuan</span><span class="l-en">Name, address or hotel &amp; city</span></label>
     <textarea id="addr" rows="2"></textarea>
+    <label class="note" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="wrap" checked> <span class="l-id">Bungkus dengan kertas kado (gratis)</span><span class="l-en">Wrap in gift paper (free)</span></label>
     <button class="btn" id="checkout"><span class="l-id">Pesan via WhatsApp</span><span class="l-en">Order via WhatsApp</span></button>
     <button class="btn ghost" id="copyOrder"><span class="l-id">Salin rincian pesanan</span><span class="l-en">Copy order details</span></button>
-    <p class="note"><span class="l-id">Pesanan dikonfirmasi oleh penjual lewat chat. Ongkir final mengikuti kurir.</span><span class="l-en">The seller confirms your order by chat. Final shipping follows the courier rate.</span></p>
+    <p class="note"><span class="l-id">Pesanan dikonfirmasi lewat WhatsApp <b class="num">+62 877-6123-1322</b>. Harga ukiran khusus dikonfirmasi lewat chat.</span><span class="l-en">Orders are confirmed on WhatsApp <b class="num">+62 877-6123-1322</b>. Engraving is priced on request by chat.</span></p>
   </div>
 </aside>
 <div class="toast" id="toast" hidden></div>
 
 <script>
 // ---- Config: put the shop's WhatsApp number here (country code, no +), e.g. "6281234567890"
-const WA_NUMBER = "";
+const WA_NUMBER = "6287761231322";
 
 const P = [
   {id:"penyu", price:100000, cat:"sea", tag:{id:"Terlaris",en:"Top pick"}, imgs:["penyu-1.jpg","penyu-2.jpg"],
@@ -422,17 +563,17 @@ const BUNDLE = {id:"bundle", price:145000, imgs:["manta-1.jpg"], name:{id:"Paket
 const CATS = [{id:"all",l:{id:"Semua",en:"All"}},{id:"sea",l:{id:"Satwa Laut",en:"Sea Life"}},{id:"bird",l:{id:"Burung",en:"Birds"}}];
 const T = {
   id:{search:"Cari ukiran: penyu, kolibri, paus…", pop:"Pilihan", lo:"Harga terendah", hi:"Harga tertinggi", stock:"1 tersedia", hand:"Buatan tangan",
-      size:"Ukuran", wood:"Bahan", woodv:"Kayu utuh + akar kayu alami", stockl:"Stok", stockv:"1 (karya unik)", ship:"Dikirim", shipv:"1–2 hari kerja",
+      size:"Ukuran", wood:"Bahan", woodv:"Kayu utuh + akar kayu alami", stockl:"Stok", stockv:"1 (karya unik)", eng:"Ukiran khusus", engv:"Tersedia atas permintaan (nama, tanggal, lokasi)", wrapl:"Bungkus kertas kado", engl:"Ukiran khusus:", maker:"Seniman", makerv:"Ibu Oki, Bali", ship:"Dikirim", shipv:"1–2 hari kerja",
       added:"Ditambahkan ke keranjang", empty:"Keranjang masih kosong.", none:"Tidak ada ukiran yang cocok.", remove:"Hapus", free:"Gratis",
       copied:"Rincian pesanan disalin", copyfail:"Salin manual dari kolom di bawah", hello:"Halo O.K. Carving, saya mau pesan:", addrl:"Kirim ke:", why:"Nilai"},
   en:{search:"Search carvings: turtle, hummingbird, whale…", pop:"Featured", lo:"Price: low to high", hi:"Price: high to low", stock:"1 available", hand:"Handmade",
-      size:"Size", wood:"Material", woodv:"Solid wood + natural root base", stockl:"Stock", stockv:"1 (one of a kind)", ship:"Ships in", shipv:"1–2 working days",
+      size:"Size", wood:"Material", woodv:"Solid wood + natural root base", stockl:"Stock", stockv:"1 (one of a kind)", eng:"Custom engraving", engv:"Available on request (name, date, place)", wrapl:"Gift-paper wrapping", engl:"Engraving:", maker:"Artist", makerv:"Oki's mom, Bali", ship:"Ships in", shipv:"1–2 working days",
       added:"Added to cart", empty:"Your cart is empty.", none:"No carvings match.", remove:"Remove", free:"Free",
       copied:"Order details copied", copyfail:"Copy it manually from the box below", hello:"Hi O.K. Carving, I'd like to order:", addrl:"Ship to:", why:"Value"}
 };
 const $ = s => document.querySelector(s);
 const store = {get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}}, set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
-let lang = store.get("ok-lang", "id");
+let lang = store.get("ok-lang", (navigator.language||"en").toLowerCase().startsWith("id")?"id":"en");
 let cat = "all", cart = store.get("ok-cart", {}), cur = null, qty = 1;
 const rp = n => "Rp" + n.toLocaleString(lang==="id"?"id-ID":"en-US");
 const all = () => [...P, BUNDLE];
@@ -462,7 +603,7 @@ function renderGrid(){
 function openP(id,keep){
   cur=P.find(p=>p.id===id); if(!keep) qty=1;
   $("#pTitle").textContent=cur.name[lang]; $("#pPrice").textContent=rp(cur.price); $("#pDesc").innerHTML=cur.desc[lang];
-  $("#pSpecs").innerHTML=[[T[lang].size,cur.size[lang]],[T[lang].wood,T[lang].woodv],[T[lang].why,cur.why[lang]],[T[lang].stockl,T[lang].stockv],[T[lang].ship,T[lang].shipv]].map(([a,b])=>`<dt>${a}</dt><dd>${b}</dd>`).join("");
+  $("#pSpecs").innerHTML=[[T[lang].size,cur.size[lang]],[T[lang].maker,T[lang].makerv],[T[lang].wood,T[lang].woodv],[T[lang].eng,T[lang].engv],[T[lang].why,cur.why[lang]],[T[lang].stockl,T[lang].stockv],[T[lang].ship,T[lang].shipv]].map(([a,b])=>`<dt>${a}</dt><dd>${b}</dd>`).join("");
   const show=i=>{$("#pMain").src="img/"+cur.imgs[i];$("#pMain").alt=cur.name[lang];[...$("#pThumbs").children].forEach((b,j)=>b.setAttribute("aria-current",i===j))};
   $("#pThumbs").innerHTML=cur.imgs.map((s,i)=>`<button data-i="${i}" aria-label="Foto ${i+1}"><img src="img/${s}" alt=""></button>`).join("");
   $("#pThumbs").onclick=e=>{const b=e.target.closest("button");if(b)show(+b.dataset.i)};
@@ -473,7 +614,7 @@ function closeP(){ $("#pScrim").hidden=true; cur=null; }
 function add(id,n){ cart[id]=(cart[id]||0)+n; store.set("ok-cart",cart); renderCart(); toast(T[lang].added); }
 function totals(){
   const sub=Object.entries(cart).reduce((s,[id,n])=>s+byId(id).price*n,0);
-  const ship= sub===0?0 : (sub>=150000||cart.bundle)?0 : 18000;
+  const ship= sub===0?0 : 30000;
   return {sub,ship,tot:sub+ship};
 }
 function renderCart(){
@@ -485,13 +626,13 @@ function renderCart(){
     <button class="rm" data-rm="${id}">${T[lang].remove}</button></div>
     <div class="qty"><button data-dec="${id}" aria-label="-">−</button><output class="num">${cart[id]}</output><button data-inc="${id}" aria-label="+">+</button></div></div>`}).join("")
     : `<p class="note" style="padding:24px 0;text-align:center">${T[lang].empty}</p>`;
-  const t=totals(); $("#sub").textContent=rp(t.sub); $("#ship").textContent=t.ship?rp(t.ship):T[lang].free; $("#tot").textContent=rp(t.tot);
+  const t=totals(); $("#sub").textContent=rp(t.sub); $("#ship").textContent=rp(t.ship); $("#tot").textContent=rp(t.tot);
   $("#checkout").disabled=$("#copyOrder").disabled=!ids.length;
 }
 function orderText(){
   const t=totals(); const lines=Object.entries(cart).map(([id,n])=>`- ${byId(id).name[lang]} × ${n} = ${rp(byId(id).price*n)}`);
   const a=$("#addr").value.trim();
-  return [T[lang].hello,...lines,`Subtotal: ${rp(t.sub)}`,`Ongkir/Shipping: ${t.ship?rp(t.ship):T[lang].free}`,`Total: ${rp(t.tot)}`, a?`${T[lang].addrl} ${a}`:""].filter(Boolean).join("\n");
+  return [T[lang].hello,...lines,`Subtotal: ${rp(t.sub)}`,`Ongkir/Shipping: ${rp(t.ship)}`,`Total: ${rp(t.tot)}`, $("#engrave").value.trim()?`${T[lang].engl} ${$("#engrave").value.trim()}`:"", $("#wrap").checked?`${T[lang].wrapl}: ✓`:"", a?`${T[lang].addrl} ${a}`:""].filter(Boolean).join("\n");
 }
 function openCart(){ $("#cScrim").hidden=false; $("#cart").hidden=false; $("#cClose").focus(); }
 function closeCart(){ $("#cScrim").hidden=true; $("#cart").hidden=true; }
@@ -503,16 +644,15 @@ function renderStrategy(){
              paus:{id:"Bentuk organik halus, ukuran besar · ±6 jam",en:"Smooth organic form, larger size · ~6 hrs"},
              manta:{id:"Bentuk sederhana, harga masuk untuk pembeli pertama · ±4 jam",en:"Simple form; entry price for first-time buyers · ~4 hrs"}};
   $("#priceRows").innerHTML=P.map(p=>`<tr><td><b>${p.name[lang].split(/,| di | on | Ukir| Wood| Hand/)[0]}</b></td><td>${why[p.id][lang]}</td><td class="r num"><b>${rp(p.price)}</b></td><td class="r num">${rp(Math.round(p.price*0.75/1000)*1000)}</td></tr>`).join("")
-    + `<tr><td><b>${BUNDLE.name[lang].split(":")[0]}</b></td><td>${lang==="id"?"Mendorong pembelian 2 karya; ongkir ditanggung":"Encourages 2-piece orders; shipping included"}</td><td class="r num"><b>${rp(BUNDLE.price)}</b></td><td class="r num">—</td></tr>`;
-  const ch=[["Shopee",25,""],["TikTok Shop",20,""],["Tokopedia",10,""],["WhatsApp + Website",10,""],["Instagram",5,""],
-            [lang==="id"?"Titip dive center & oleh‑oleh":"Dive centers & souvenir shops",15,"sea"],[lang==="id"?"Bazar & pasar kreatif":"Markets & bazaars",5,"sea"],
-            [lang==="id"?"Hotel, korporat, ekspor":"Hotels, corporate, export",10,"root"]];
+    + `<tr><td><b>${BUNDLE.name[lang].split(":")[0]}</b></td><td>${lang==="id"?"Mendorong pembelian 2 karya sekaligus":"Encourages 2-piece orders"}</td><td class="r num"><b>${rp(BUNDLE.price)}</b></td><td class="r num">—</td></tr>`;
+  const ch=[[lang==="id"?"Mobil Oki (langsung)":"Oki's car (direct)",20,"sea"],["Dive centers",25,"sea"],[lang==="id"?"Tuan rumah villa & agen kapal":"Villa hosts & boat agents",15,"sea"],
+            [lang==="id"?"WhatsApp + website (pembeli dari luar negeri)":"WhatsApp + website (buyers abroad)",15,""],["Instagram / Etsy",10,""],["Shopee / Tokopedia / TikTok Shop",10,""],
+            [lang==="id"?"Hotel & resort":"Hotels & resorts",5,"root"]];
   $("#bars").innerHTML=ch.map(([n,v,c])=>`<div class="bar"><span>${n}</span><div class="track"><div class="fill ${c}" style="width:${v*4}%"></div></div><span class="num" style="text-align:right">${v}%</span></div>`).join("");
 }
 function route(){
-  const s=location.hash==="#strategi";
-  $("#view-shop").hidden=s; $("#view-strat").hidden=!s;
-  $("#tab-shop").setAttribute("aria-current",s?"false":"page"); $("#tab-strat").setAttribute("aria-current",s?"page":"false");
+  const v=["toko","strategi","untuk-oki"]; const h=location.hash.slice(1); const cur=v.includes(h)?h:"toko";
+  v.forEach(k=>{$("#view-"+k).hidden=k!==cur; $("#tab-"+k).setAttribute("aria-current",k===cur?"page":"false");});
 }
 
 // events
@@ -526,7 +666,7 @@ document.addEventListener("click",e=>{
   if(t.dataset.lang) setLang(t.dataset.lang);
   if(t.dataset.go) $("#grid-head").scrollIntoView({behavior:"smooth"});
 });
-$("#searchForm").addEventListener("submit",e=>{e.preventDefault();if(location.hash==="#strategi")location.hash="#toko";renderGrid();$("#grid-head").scrollIntoView({behavior:"smooth"})});
+$("#searchForm").addEventListener("submit",e=>{e.preventDefault();if(location.hash&&location.hash!=="#toko")location.hash="#toko";renderGrid();$("#grid-head").scrollIntoView({behavior:"smooth"})});
 $("#q").addEventListener("input",renderGrid);
 $("#sort").addEventListener("change",renderGrid);
 $("#pClose").onclick=closeP; $("#pScrim").onclick=e=>{if(e.target.id==="pScrim")closeP()};
@@ -545,7 +685,10 @@ $("#copyOrder").onclick=()=>{
   navigator.clipboard?.writeText(txt).then(()=>toast(T[lang].copied)).catch(()=>{$("#addr").value=txt;$("#addr").select();toast(T[lang].copyfail)})
     ?? ($("#addr").value=txt,$("#addr").select(),toast(T[lang].copyfail));
 };
-window.addEventListener("hashchange",route);
+window.addEventListener("hashchange",()=>{route();scrollTo(0,0)});
+document.addEventListener("click",e=>{const b=e.target.closest("[data-copy]");if(!b)return;
+  const pre=[...b.parentElement.querySelectorAll("pre")].find(p=>getComputedStyle(p).display!=="none");
+  navigator.clipboard?.writeText(pre.textContent).then(()=>toast("✓ Copied")).catch(()=>{const r=document.createRange();r.selectNodeContents(pre);getSelection().removeAllRanges();getSelection().addRange(r);});});
 route(); setLang(lang);
 </script>
 </body>
